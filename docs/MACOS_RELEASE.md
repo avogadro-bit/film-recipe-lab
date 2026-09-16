@@ -32,10 +32,11 @@ Use a clean build environment so unrelated Python packages are not bundled:
 ```bash
 python3 -m venv .venv-release
 .venv-release/bin/python -m pip install -e '.[release,optics]'
+.venv-release/bin/python scripts/prepare_release_notices.py
 .venv-release/bin/python scripts/build_macos_release.py
 ```
 
-The script builds and verifies the `.app`, then creates a ZIP, a DMG, and
-`SHA256SUMS.txt` under `dist/release/`. PyInstaller targets the architecture of
+The script builds and verifies the `.app`, then creates a ZIP, a DMG, dependency
+source and notice ZIPs, and `SHA256SUMS.txt` under `dist/release/`. PyInstaller targets the architecture of
 the Python interpreter used for the build. Build once on Apple Silicon and once
 on Intel to publish both native variants.

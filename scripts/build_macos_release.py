@@ -88,8 +88,10 @@ def main():
     )
 
     checksums = release / "SHA256SUMS.txt"
+    sources = Path(shutil.make_archive(str(release / "Dependency-Sources"), "zip", ROOT / "build" / "dependency-sources"))
+    notices = Path(shutil.make_archive(str(release / "Third-Party-Notices"), "zip", ROOT / "build" / "release-notices"))
     checksums.write_text(
-        "".join(f"{digest(path)}  {path.name}\n" for path in (archive, image)),
+        "".join(f"{digest(path)}  {path.name}\n" for path in (archive, image, sources, notices)),
         encoding="utf-8",
     )
     print(f"Release artifacts: {release}")

@@ -14,6 +14,10 @@ datas += [
     (str(project_root / "LICENSE"), "."),
     (str(project_root / "THIRD_PARTY.md"), "."),
 ]
+notices = project_root / "build" / "release-notices"
+if not (notices / "inventory.json").is_file():
+    raise RuntimeError("Run scripts/prepare_release_notices.py before packaging")
+datas.append((str(notices), "Third-Party-Notices"))
 
 a = Analysis(
     [str(project_root / "fuji_recipe_lab" / "desktop.py")],

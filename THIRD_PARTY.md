@@ -16,10 +16,10 @@ Les firmwares, modules extraits, outils tiers téléchargés et rapports de rech
 
 ## Dépendances
 
-Les dépendances Python sont installées séparément par pip et conservent leurs propres licences et notices. Consulter les métadonnées et fichiers de licence des versions réellement installées, notamment rawpy/LibRaw, NumPy, SciPy, Pillow, Pydantic, tifffile et, pour l’extra `emulation`, Unicorn et Capstone. ExifTool est une dépendance système externe. Le profil Adobe RGB système, les photos, JPEG de référence, documents du fabricant et téléchargements ne sont pas redistribués.
+La release macOS intègre Python, rawpy/LibRaw, NumPy, SciPy, Pillow, Pydantic, tifffile et lensfunpy/Lensfun. Leurs licences et notices sont incluses dans `Contents/Resources/Third-Party-Notices` et dans une archive jointe à la release publique. Les sources correspondantes des bibliothèques natives concernées et leurs scripts de compilation sont disponibles dans `Dependency-Sources.zip`. Voir [les notices de distribution](docs/DEPENDENCY_NOTICES.md). Unicorn et Capstone ne sont pas intégrés à l’application. ExifTool reste externe. Les LUT officielles, firmwares, photos personnelles et profils ICC propriétaires ne sont pas redistribués.
 
 ## Code original
 
-L’option `optics` installe lensfunpy et sa base Lensfun séparément. Le projet ne copie pas cette base dans le dépôt. Les coefficients DNG Leica sont lus à la demande dans les photos de l’utilisateur, sans les inclure dans les sources ni les jeux de tests publics. L’implémentation géométrique se réfère à la [spécification DNG Adobe](https://helpx.adobe.com/camera-raw/digital-negative.html) et l’intégration des profils à la [documentation lensfunpy](https://letmaik.github.io/lensfunpy/).
+La release macOS embarque lensfunpy et la base Lensfun sans modification. La bibliothèque Lensfun est sous LGPL 3.0 et sa base sous CC BY-SA 3.0, avec attribution aux contributeurs Lensfun. Les coefficients DNG Leica sont lus à la demande dans les photos de l’utilisateur. L’implémentation géométrique se réfère à la [spécification DNG Adobe](https://helpx.adobe.com/camera-raw/digital-negative.html) et l’intégration des profils à la [documentation lensfunpy](https://letmaik.github.io/lensfunpy/).
 
 Le code original est distribué sous [licence MIT](LICENSE). Cette licence ne remplace pas celles des ressources tierces. Ce document fournit l’inventaire des ressources ; il ne constitue pas une validation juridique des droits de distribution.
