@@ -427,7 +427,8 @@ document.addEventListener("keydown",e=>{if(["INPUT","SELECT","TEXTAREA","BUTTON"
  if(e.key==="Tab"){e.preventDefault();$("#focus-view").click();}else if(["+","="].includes(e.key)){e.preventDefault();changeZoom(viewScale*1.25);}else if(e.key==="-"){e.preventDefault();changeZoom(viewScale/1.25);}else if(e.key==="0")resetView();else if(e.key==="1")changeZoom(1);
 });
 // Local folder browser: no copying of RAW files and no upload of a directory.
-let folderPath=null,folderParent=null,folderRevision=0;
+let folderPath=null,folderParent=null,folderRevision=0,folderPurpose="photos";
+$("#choose-lut-folder").onclick=()=>openFolderPicker("luts");
 async function browseFolder(path){
  const revision=++folderRevision;$("#folder-error").textContent="";$("#folder-select").disabled=true;
  try{const data=await api("/api/folders"+(path?"?path="+encodeURIComponent(path):""));if(revision!==folderRevision)return;
@@ -440,16 +441,33 @@ async function browseFolder(path){
  for(const f of data.folders){const b=element("button",undefined,"folder-row");b.type="button";b.title=f.path;b.append(element("span","▰","folder-icon"),element("span",f.name,"folder-name"),element("span","›","folder-open"));b.onclick=()=>browseFolder(f.path);$("#folder-list").append(b);}
  if(!data.folders.length)$("#folder-list").append(element("p","This folder has no subfolders.","no-files"));
  $("#folder-selection-name").textContent=data.name||"None";$("#folder-selection-name").title=data.path||"";
- $("#folder-selection-details").textContent=`${data.raw_count||0} compatible RAW file${data.raw_count===1?"":"s"} directly in this folder`;
+ $("#folder-selection-details").textContent=folderPurpose==="luts"?"The official LUTs will be located and verified in this folder and its subfolders.":`${data.raw_count||0} compatible RAW file${data.raw_count===1?"":"s"} directly in this folder`;
  $("#folder-select").disabled=!data.path;
  }catch(e){if(revision===folderRevision)$("#folder-error").textContent=e.message;}
 }
-function openFolderPicker(){$("#folder-dialog").showModal();browseFolder(folderPath);}
+function openFolderPicker(purpose="photos"){
+ folderPurpose=purpose==="luts"?"luts":"photos";
+ $("#folder-dialog h2").textContent=folderPurpose==="luts"?"Choose the extracted LUT folder":"Choose a photo folder";
+ $("#folder-dialog .eyebrow").textContent=folderPurpose==="luts"?"LUT IMPORT":"INPUT FOLDER";
+ $("#folder-dialog .folder-hint").textContent=folderPurpose==="luts"?"Choose the GFX ETERNA 55 folder you unzipped, or its F-Log2 subfolder.":"Browse from a familiar location, or enter a path. The selected folder is read in place.";
+ $("#folder-dialog .folder-recursive").hidden=folderPurpose==="luts";
+ $("#folder-select").textContent=folderPurpose==="luts"?"Install LUTs from This Folder":"Choose This Folder";
+ $("#folder-dialog").showModal();browseFolder(folderPath);
+}
 $("#choose-folder").onclick=$("#empty-import").onclick=openFolderPicker;
 $("#folder-close").onclick=()=>$("#folder-dialog").close();$("#folder-up").onclick=()=>browseFolder(folderParent);
 $("#folder-path-form").onsubmit=e=>{e.preventDefault();browseFolder($("#folder-path").value.trim());};
 $("#folder-select").onclick=async()=>{
  if(!folderPath)return;const button=$("#folder-select");button.disabled=true;button.textContent="Reading Folder…";
+ if(folderPurpose==="luts"){
+  const progress=$("#lut-progress");progress.hidden=false;$("#lut-error").textContent="";
+  try{
+   const result=await api("/api/luts/install",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:folderPath})});
+   updateLutSetup(result.engine);$("#folder-dialog").close();toast("Official LUTs installed and verified.");if(selected)scheduleRender(0);
+  }catch(e){$("#folder-error").textContent=e.message;}
+  finally{button.disabled=false;button.textContent="Install LUTs from This Folder";progress.hidden=true;}
+  return;
+ }
  try{const data=await api("/api/folder",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:folderPath,recursive:$("#folder-recursive").checked})});
  selectionVersion++;renderRevision++;selected=null;fullWidth=fullHeight=0;clearDetailTiles(true);selectedIds.clear();recipesById.clear();undoStack=[];future=[];files=data.files;filter="all";$("#search").value="";for(const b of document.querySelectorAll("[data-filter]"))b.classList.toggle("active",b.dataset.filter==="all");
  photo.hidden=true;$("#empty").hidden=false;$("#loading").hidden=true;$("#filename").textContent="Choose a photo";$("#file-subtitle").textContent=files.length+" RAW file"+(files.length===1?"":"s")+" in this folder";$("#photo-info").textContent="";$("#preview-kind").textContent="No photo selected";$("#recipe-state").textContent="Recipe retained";

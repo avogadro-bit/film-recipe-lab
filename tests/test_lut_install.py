@@ -41,6 +41,25 @@ class LutInstallTests(unittest.TestCase):
             install_archive(self.archive,self.destination)
         self.assertEqual(old.read_bytes(),b'old')
 
+    def test_extracted_folder_and_subfolder_are_detected(self):
+        folder = self.root/'unpacked'/'pack'
+        folder.mkdir(parents=True)
+        (folder/'test.cube').write_bytes(self.data)
+        with patch('fuji_recipe_lab.lut_install.MANIFEST', self.manifest):
+            for source in (folder.parent, folder):
+                install_archive(source, self.destination)
+                self.assertEqual((self.destination/'test.cube').read_bytes(), self.data)
+
+    def test_modified_folder_leaves_installed_luts_unchanged(self):
+        folder = self.root/'unpacked'
+        folder.mkdir()
+        (folder/'test.cube').write_bytes(b'wrong')
+        self.destination.mkdir()
+        (self.destination/'test.cube').write_bytes(b'old')
+        with patch('fuji_recipe_lab.lut_install.MANIFEST', self.manifest), self.assertRaises(ValueError):
+            install_archive(folder, self.destination)
+        self.assertEqual((self.destination/'test.cube').read_bytes(), b'old')
+
     def test_missing_members_do_not_create_partial_installation(self):
         with ZipFile(self.archive,'w') as z:z.writestr('unrelated.cube',self.data)
         with patch('fuji_recipe_lab.lut_install.MANIFEST',self.manifest), self.assertRaises(ValueError):

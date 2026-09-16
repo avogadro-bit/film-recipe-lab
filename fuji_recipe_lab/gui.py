@@ -516,6 +516,15 @@ class Handler(BaseHTTPRequestHandler):
                         remaining -= len(chunk)
                 return self.send(201, self.server.library.add(path))
             if route.path == "/api/luts/install":
+                if self.headers.get('Content-Type', '').split(';')[0] == 'application/json':
+                    if length > 65536:
+                        raise ValueError('LUT path request is too large')
+                    value = json.loads(self.rfile.read(length))
+                    if not isinstance(value, dict) or not isinstance(value.get('path'), str) or not value['path'].strip():
+                        raise ValueError('Choose a LUT ZIP or extracted folder')
+                    install_archive(Path(value['path']).expanduser())
+                    engine = studio_status()
+                    return self.send(201, {"installed": not engine["missing_luts"], "engine": engine})
                 name = Path(parse_qs(route.query).get("name", [""])[0]).name
                 if Path(name).suffix.lower() != ".zip":
                     return self.send(415, {"error": "Choose the GFX ETERNA 55 ZIP archive downloaded from Fujifilm."})

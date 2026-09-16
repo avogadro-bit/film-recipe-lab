@@ -319,6 +319,17 @@ class GuiServerTests(unittest.TestCase):
         self.assertFalse(observed[0].exists())
         self.assertEqual(self.request('/api/luts/install?name=profile.cube','POST',b'not a zip')[0],415)
 
+    def test_lut_folder_installation(self):
+        from unittest.mock import patch
+        folder = Path(self.scratch.name)/'extracted-luts'
+        folder.mkdir()
+        with patch('fuji_recipe_lab.gui.install_archive') as install, patch('fuji_recipe_lab.gui.studio_status', return_value={'missing_luts':[]}):
+            code, data = self.request('/api/luts/install', 'POST', json.dumps({'path':str(folder)}), {'Content-Type':'application/json'})
+        self.assertEqual(code, 201)
+        self.assertTrue(data['installed'])
+        install.assert_called_once_with(folder)
+        self.assertTrue(folder.exists())
+
     def test_folder_selection_reads_originals_without_copying(self):
         root=Path(self.scratch.name).resolve()/"photos";root.mkdir()
         (root/"a.CR3").write_bytes(b"raw fixture")
