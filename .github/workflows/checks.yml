@@ -11,7 +11,7 @@ jobs:
         python: ['3.11', '3.13']
     runs-on: ${{ matrix.os }}
     env:
-      FUJI_RECIPE_LUT_DIR: ${{ runner.temp }}/absent-fuji-luts
+      FUJI_RECIPE_LUT_DIR: .ci-absent-fuji-luts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
