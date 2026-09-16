@@ -53,11 +53,45 @@ def normalize_exif(data):
 def exif(path: Path) -> dict:
     require_local(path)
     if not shutil.which("exiftool"):
+        if path.suffix.lower() == '.dng':
+            return dng_input_metadata(path)
         return {"metadata_available": False, "reason": "ExifTool missing"}
     tags = ["BaselineExposure", "Make", "Model", "RawImageFullSize", "ImageWidth", "ImageHeight", "ISO", "ExposureTime", "FNumber", "FilmMode", "WhiteBalance", "WhiteBalanceFineTune", "DynamicRange", "DevelopmentDynamicRange", "HighlightTone", "ShadowTone", "Saturation", "Sharpness", "NoiseReduction", "GrainEffectRoughness", "GrainEffectSize", "ColorChromeEffect", "ColorChromeFXBlue", "Clarity", "DNGVersion", "PhotometricInterpretation", "Software", "ColorMatrix1", "ColorMatrix2", "ForwardMatrix1", "ForwardMatrix2", "AsShotNeutral", "CFARepeatPatternDim", "CFAPattern2", "BlackLevel", "WhiteLevel", "CalibrationIlluminant1", "CalibrationIlluminant2"]
     result = subprocess.run(["exiftool", "-j", "-G1", "-a", *["-" + t for t in tags], str(path)], capture_output=True, text=True, check=True, timeout=20)
     data = json.loads(result.stdout)[0]
     return normalize_exif(data)
+
+
+def dng_input_metadata(path: Path) -> dict:
+    """Read the input profile contract without an external executable.
+
+    Only read TIFF tags, never raster data. ExifTool still supplies the richer
+    shooting and lens metadata when available.
+    """
+    import tifffile
+    result = {"metadata_available": False, "reason": "ExifTool missing"}
+    try:
+        with tifffile.TiffFile(path) as source:
+            page = source.pages[0]
+            for code, name in ((271, 'Make'), (272, 'Model'), (50730, 'BaselineExposure')):
+                tag = page.tags.get(code)
+                if tag is None:
+                    continue
+                value = tag.value
+                if code == 50730:
+                    if isinstance(value, tuple):
+                        numerator, denominator = value
+                        value = numerator / denominator
+                    value = float(value)
+                    if not np.isfinite(value):
+                        continue
+                result[name] = value
+    except (OSError, ValueError, IndexError, ZeroDivisionError):
+        return result
+    if 'Make' in result and 'Model' in result:
+        result.update(metadata_available=True, metadata_source='DNG tags',
+                      reason='Basic DNG metadata; ExifTool unavailable')
+    return result
 
 
 def probe(path: Path) -> dict:
