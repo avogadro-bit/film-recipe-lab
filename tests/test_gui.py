@@ -65,6 +65,43 @@ class StaticGuiTests(unittest.TestCase):
 
 
 class GuiServerTests(unittest.TestCase):
+    def test_dng_tiles_correct_only_region_and_preserve_full_frame_result(self):
+        from unittest.mock import patch
+        import numpy as np
+        from fuji_recipe_lab.optics import apply_corrections
+        library=self.server.library
+        path=Path(self.scratch.name)/'regional.dng';path.write_bytes(b'raw')
+        item=library.add(path)
+        pixels=np.random.default_rng(4).uniform(-.1,3,(900,1200,3)).astype(np.float32)
+        library.linear_cache[item['id']]=pixels
+        profile={'source':'dng-warp','orientation':1,'distortion':True,'vignetting':False,
+                 'warp':{'coefficients':[1,-.1,0,0,0,0],'center':[.4,.55]}}
+        recipe=StudioRecipe(lens_distortion='auto')
+        request=TileRequest(id=item['id'],recipe=recipe,x=512,y=256,size=128,level=2)
+        with patch('fuji_recipe_lab.optics.inspect_optics',return_value=profile):
+            actual=library.render_tile(request)
+        self.assertFalse(library.corrected_cache)
+        library.tile_cache.clear()
+        library.corrected_cache[(item['id'],'auto','off')]=apply_corrections(pixels,profile,'auto')
+        # Force the generic full-frame path for a byte-for-byte output comparison.
+        with patch('fuji_recipe_lab.optics.inspect_optics',return_value={**profile,'source':'test-full'}):
+            expected=library.render_tile(request)
+        self.assertEqual(actual,expected)
+
+    def test_superseded_tile_is_rejected_before_decode(self):
+        from unittest.mock import patch
+        library=self.server.library
+        library.tile_generations['tab']=8
+        request=TileRequest(id='unused',recipe=StudioRecipe(),x=0,y=0,view_id='tab',generation=7)
+        with patch('fuji_recipe_lab.gui.decode') as decode:
+            with self.assertRaisesRegex(ValueError,'Superseded viewport'):
+                library.render_tile(request)
+            decode.assert_not_called()
+
+    def test_health_requires_active_session(self):
+        self.assertEqual(self.request('/api/health'), (200, {'ready': True}))
+        self.assertEqual(self.request('/api/health', headers={'X-Fuji-Session':'old-session'})[0], 403)
+
     def test_source_resolution_tile_uses_full_decode_context_and_cache(self):
         from unittest.mock import patch
         import numpy as np

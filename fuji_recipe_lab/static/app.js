@@ -15,6 +15,7 @@ let undoStack=[],future=[],copiedSettings=null;
 let renderRevision=0, renderTimer, renderBusy=false, renderAgain=false, renderURL, beforeURL, comparing=false, currentRenderQuality=null, renderController=null;
 let fullWidth=0,fullHeight=0,tileTimer,tileGeneration=0,tileLoading=0;
 const tileControllers=new Set(),tileURLs=new Map();
+const tileViewId=crypto.randomUUID();
 const films = [
  ["provia","PROVIA / Standard","Balanced color for everyday photography."], ["velvia","Velvia / Vivid","A vivid palette with deep color."],
  ["astia","ASTIA / Soft","Delicate color and soft tonality."], ["classic_chrome","Classic Chrome","A restrained palette with a documentary character."],
@@ -38,12 +39,33 @@ function endActivity(){
 }
 async function api(path, options={}) {
  beginActivity();
- try{const response = await fetch(path, {...options, headers:{"X-Fuji-Session":session,...options.headers}});
+ const controller=new AbortController(),abort=()=>controller.abort(options.signal.reason);
+ if(options.signal?.aborted)abort();else options.signal?.addEventListener("abort",abort,{once:true});
+ const timer=setTimeout(()=>controller.abort(new DOMException("The request took too long. Please try again.","TimeoutError")),path.startsWith("/api/export")?600000:120000);
+ try{const response = await fetch(path, {...options,signal:controller.signal, headers:{"X-Fuji-Session":session,...options.headers}});
+  if(response.status===403){$("#connection-message").textContent="This session has expired. Reopen Film Recipe Lab from the Dock.";$("#connection-status").hidden=false;}
+  else connectionHealthy();
   if(!response.ok){const value=await response.json();throw new Error(value.error||"Request failed");}
   const type=response.headers.get("content-type")||"";
-  return type.startsWith("image/")||type.startsWith("application/zip") ? response.blob() : response.json();
- }finally{endActivity();}
+  return await (type.startsWith("image/")||type.startsWith("application/zip") ? response.blob() : response.json());
+ }catch(e){if(e instanceof TypeError)checkConnection();throw e;}
+ finally{clearTimeout(timer);options.signal?.removeEventListener("abort",abort);endActivity();}
 }
+let healthCheckBusy=false,healthFailures=0,lastHealthy=Date.now();
+function connectionHealthy(){healthFailures=0;lastHealthy=Date.now();$("#connection-status").hidden=true;}
+async function checkConnection(){
+ if(healthCheckBusy||document.hidden)return;healthCheckBusy=true;const started=Date.now();
+ try{const response=await fetch("/api/health",{headers:{"X-Fuji-Session":session},signal:AbortSignal.timeout(10000),cache:"no-store"});
+  if(response.status===403){$("#connection-message").textContent="This session has expired. Reopen Film Recipe Lab from the Dock.";$("#connection-status").hidden=false;}
+  else if(response.ok)connectionHealthy();else throw new Error("Health check failed");
+ }
+ catch{if(lastHealthy<=started){healthFailures++;if(healthFailures>=2){$("#connection-message").textContent=healthFailures>=3&&Date.now()-lastHealthy>=30000?"The app is not responding. Check the connection again; if it persists, reopen Film Recipe Lab from the Dock.":"The app is responding slowly. Processing may still be running; keep this photo open.";$("#connection-status").hidden=false;}}}
+ finally{healthCheckBusy=false;}
+}
+$("#connection-retry").onclick=checkConnection;
+window.addEventListener("focus",checkConnection);
+document.addEventListener("visibilitychange",checkConnection);
+setInterval(checkConnection,15000);
 function section(name) { const e=element("section",undefined,"control-section");e.append(element("h3",name));$("#controls").append(e);return e; }
 function select(parent, label, key, choices) {const l=element("label",label),s=element("select");s.dataset.key=key;for(const [v,t] of choices){const o=element("option",t);o.value=v;s.append(o);}l.append(s);parent.append(l);}
 function slider(parent,label,key,min,max,step=1) {const row=element("div",undefined,"range-row"),l=element("label",label),o=element("output"),i=element("input");i.type="range";i.min=min;i.max=max;i.step=step;i.dataset.key=key;i.id="control-"+key;l.htmlFor=i.id;o.dataset.output=key;l.append(o);row.append(l,i);parent.append(row);}
@@ -138,14 +160,15 @@ function drainThumbnailQueue(){
   api("/api/thumbnail/"+f.id).then(blob=>{const url=URL.createObjectURL(blob);thumbnailPictures.set(f.id,url);while(thumbnailPictures.size>96){const key=thumbnailPictures.keys().next().value;URL.revokeObjectURL(thumbnailPictures.get(key));thumbnailPictures.delete(key);}for(const image of document.querySelectorAll(`img[data-photo-id="${f.id}"]`)){image.src=url;image.hidden=false;image.previousElementSibling.hidden=true;}}).catch(()=>{}).finally(()=>{thumbnailRequests.delete(f.id);thumbnailWorkers--;drainThumbnailQueue();});
  }
 }
+const thumbnailObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const f=files.find(item=>item.id===entry.target.dataset.photoId);if(f)queueThumbnail(f);thumbnailObserver.unobserve(entry.target);}},{root:$("#filmstrip"),rootMargin:"0px 300px"});
 function drawLibrary(){
- const visible=visibleFiles();$("#count").textContent=files.length;$("#file-list").replaceChildren();$("#filmstrip").replaceChildren();
- if(!visible.length)$("#file-list").append(element("p",files.length?"No files match this filter.":"Choose a photo folder.","no-files"));
- for(const f of visible){const b=element("button",undefined,"file-row"+(f.id===selected?.id?" selected":"")+(selectedIds.has(f.id)?" batch-selected":""));b.title=f.path;b.setAttribute("aria-label","Open "+f.name);const icon=element("span",f.format,"file-icon"),t=element("span",undefined,"file-text");t.append(element("strong",f.name),element("small",f.local?`${(f.bytes/1048576).toFixed(1)} MB · ${f.group}`:"iCloud · download required"));b.append(icon,t);b.onclick=()=>openPhoto(f);$("#file-list").append(b);}
- const index=Math.max(0,visible.findIndex(f=>f.id===selected?.id));for(const f of visible.slice(Math.max(0,index-8),Math.max(0,index-8)+24)){
+ thumbnailObserver.disconnect();
+ const visible=visibleFiles();$("#count").textContent=files.length;$("#filmstrip").replaceChildren();
+ if(!visible.length)$("#filmstrip").append(element("p",files.length?"No files match this filter.":"Choose a photo folder.","no-files"));
+ for(const f of visible){
   const entry=element("div",undefined,"strip-entry"+(selectedIds.has(f.id)?" batch-selected":""));
   const b=element("button",undefined,"strip-item"+(f.id===selected?.id?" selected":""));b.title=f.name;b.setAttribute("aria-label", "Open "+f.name);
-  const visual=element("span",undefined,"strip-visual"),placeholder=element("span",f.format,"strip-placeholder"),im=element("img");im.alt="Thumbnail of "+f.name;im.dataset.photoId=f.id;const source=pictures.get(f.id)||thumbnailPictures.get(f.id);if(source){im.src=source;placeholder.hidden=true;}else{im.hidden=true;queueThumbnail(f);}visual.append(placeholder,im);if(f.id===selected?.id)visual.append(element("span","VIEWING","strip-active-badge"));
+  const visual=element("span",undefined,"strip-visual"),placeholder=element("span",f.format,"strip-placeholder"),im=element("img");im.alt="Thumbnail of "+f.name;im.dataset.photoId=f.id;const source=pictures.get(f.id)||thumbnailPictures.get(f.id);if(source){im.src=source;placeholder.hidden=true;}else{im.hidden=true;visual.dataset.photoId=f.id;thumbnailObserver.observe(visual);}visual.append(placeholder,im);if(f.id===selected?.id)visual.append(element("span","VIEWING","strip-active-badge"));
   const caption=element("span",undefined,"strip-caption");caption.append(element("strong",f.name),element("small",f.format));b.append(visual,caption);
   b.onclick=()=>openPhoto(f,selectedIds.size>1&&selectedIds.has(f.id));
   const check=element("button",selectedIds.has(f.id)?"✓":"","strip-select");check.type="button";check.title=selectedIds.has(f.id)?"Remove from editing group":"Include in editing group";check.setAttribute("aria-label",check.title+": "+f.name);check.setAttribute("aria-pressed",String(selectedIds.has(f.id)));check.onclick=e=>{e.stopPropagation();toggleSelected(f);};
@@ -330,17 +353,18 @@ async function refreshVisibleTiles(){
  for(const controller of tileControllers)controller.abort();tileControllers.clear();detailLayer.replaceChildren();detailLayer.hidden=false;
  for(let y=startY;y<endY;y+=tileSpan)for(let x=startX;x<endX;x+=tileSpan){const width=Math.min(tileSpan,geometry.width-x),height=Math.min(tileSpan,geometry.height-y),key=`${id}:${revision}:${tileLevel}:${x}:${y}`;if(tileURLs.has(key))addDetailTile(key,x,y,width,height);else missing.push({x,y,width,height,key});}
  if(!missing.length){$("#preview-kind").textContent="SOURCE-RESOLUTION DETAIL · "+(officialFilms.has(recipe.film)?"FUJIFILM LUT":"INTERPRETATION");return;}
- tileLoading=missing.length;$("#recipe-state").textContent="Loading source detail…";
+ missing.sort((a,b)=>Math.hypot(a.x+a.width/2-(x0+x1)/2,a.y+a.height/2-(y0+y1)/2)-Math.hypot(b.x+b.width/2-(x0+x1)/2,b.y+b.height/2-(y0+y1)/2));
+ let failures=0;tileLoading=missing.length;$("#recipe-state").textContent="Loading source detail…";
  async function worker(){
   while(missing.length&&generation===tileGeneration){const tile=missing.shift(),controller=new AbortController();tileControllers.add(controller);
-   try{const blob=await api("/api/tile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,recipe:settings,x:tile.x,y:tile.y,size:TILE_SIZE,level:tileLevel}),signal:controller.signal});
+   try{const blob=await api("/api/tile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,recipe:settings,x:tile.x,y:tile.y,size:TILE_SIZE,level:tileLevel,view_id:tileViewId,generation}),signal:controller.signal});
     if(generation!==tileGeneration||id!==selected?.id){continue;}const url=URL.createObjectURL(blob);tileURLs.set(tile.key,url);while(tileURLs.size>128){const oldest=tileURLs.keys().next().value;URL.revokeObjectURL(tileURLs.get(oldest));tileURLs.delete(oldest);}addDetailTile(tile.key,tile.x,tile.y,tile.width,tile.height);
-   }catch(error){if(error.name!=="AbortError"&&generation===tileGeneration)$("#recipe-state").textContent="Source detail unavailable · proxy retained";}
-   finally{tileControllers.delete(controller);tileLoading--;}
+   }catch(error){if(error.name!=="AbortError"&&generation===tileGeneration){failures++;$("#recipe-state").textContent="Source detail unavailable · proxy retained";}}
+   finally{tileControllers.delete(controller);if(generation===tileGeneration)tileLoading--;}
   }
  }
  await Promise.all(Array.from({length:Math.min(2,missing.length)},worker));
- if(generation===tileGeneration){$("#preview-kind").textContent="SOURCE-RESOLUTION DETAIL · "+(officialFilms.has(recipe.film)?"FUJIFILM LUT":"INTERPRETATION");$("#recipe-state").textContent="Recipe applied · source detail ready";}
+ if(generation===tileGeneration&&!failures){$("#preview-kind").textContent="SOURCE-RESOLUTION DETAIL · "+(officialFilms.has(recipe.film)?"FUJIFILM LUT":"INTERPRETATION");$("#recipe-state").textContent="Recipe applied · source detail ready";}
 }
 function updateView(tileDelay=120){
  const ready=!photo.hidden&&photo.naturalWidth>0;
@@ -385,9 +409,12 @@ new ResizeObserver(()=>updateView()).observe(viewport);
 
 // Resizable framing around the photograph. Values are local UI preferences;
 // double-clicking any separator restores that edge to its default size.
-const frameDefaults={left:224,right:326,top:62,bottom:214},workspace=$(".workspace");
+const frameDefaults={left:224,right:326,top:52,bottom:218},workspace=$(".workspace");
 let frameLayout={...frameDefaults};
 try{const saved=JSON.parse(localStorage.getItem("film-view-layout")||"null");if(saved)for(const key of Object.keys(frameDefaults))if(Number.isFinite(saved[key]))frameLayout[key]=saved[key];}catch(_){}
+// Upgrade the previous defaults without discarding manually resized panels.
+if(frameLayout.top===62)frameLayout.top=frameDefaults.top;
+if(frameLayout.bottom===250)frameLayout.bottom=frameDefaults.bottom;
 function frameLimits(key){
  const viewerHeight=$(".viewer").clientHeight||innerHeight;
  if(key==="left")return [120,Math.max(120,Math.min(480,innerWidth-frameLayout.right-340))];
@@ -468,15 +495,64 @@ $("#folder-select").onclick=async()=>{
   finally{button.disabled=false;button.textContent="Install LUTs from This Folder";progress.hidden=true;}
   return;
  }
- try{const data=await api("/api/folder",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:folderPath,recursive:$("#folder-recursive").checked})});
- selectionVersion++;renderRevision++;selected=null;fullWidth=fullHeight=0;clearDetailTiles(true);selectedIds.clear();recipesById.clear();undoStack=[];future=[];files=data.files;filter="all";$("#search").value="";for(const b of document.querySelectorAll("[data-filter]"))b.classList.toggle("active",b.dataset.filter==="all");
+ try{await selectPhotoFolder(folderPath,$("#folder-recursive").checked);$("#folder-dialog").close();}
+ catch(e){$("#folder-error").textContent=e.message;}finally{button.disabled=false;button.textContent="Choose This Folder";}
+};
+
+let currentFolder=null,folderLoadRevision=0;
+const folderNodes=new Map(),expandedFolders=new Set(),folderLoads=new Map();
+let folderRoots=[];
+async function readTreeFolder(path){
+ if(folderNodes.has(path))return folderNodes.get(path);
+ if(!folderLoads.has(path))folderLoads.set(path,api("/api/folders"+(path?"?path="+encodeURIComponent(path):"")).then(data=>{folderNodes.set(data.path,data);return data;}).finally(()=>folderLoads.delete(path)));
+ return folderLoads.get(path);
+}
+async function initializeFolderTree(){
+ try{const data=await readTreeFolder(null);folderRoots=data.shortcuts||[];if(currentFolder)await revealFolder(currentFolder);else drawFolderTree();}
+ catch(e){$("#folder-tree-error").textContent=e.message;}
+}
+async function revealFolder(path){
+ const data=await readTreeFolder(path);
+ if(!folderRoots.some(root=>path===root.path||path.startsWith(root.path+"/")))folderRoots.push({path:data.path,name:data.name});
+ // Expand ancestors of the closest shortcut, not the entire home directory.
+ const root=folderRoots.filter(root=>path===root.path||path.startsWith(root.path+"/")).sort((a,b)=>b.path.length-a.path.length)[0];
+ for(const crumb of data.breadcrumbs||[]){if(root&&(crumb.path===root.path||crumb.path.startsWith(root.path+"/"))&&crumb.path!==path){await readTreeFolder(crumb.path);expandedFolders.add(crumb.path);}}
+ drawFolderTree();
+}
+function drawFolderTree(){
+ const host=$("#folder-tree");host.replaceChildren();
+ function branch(items,depth=0){
+  const list=element("ul");
+  for(const item of items){
+   const li=element("li"),row=element("div",undefined,"tree-folder-row"+(item.path===currentFolder?" active":""));row.style.paddingLeft=(8+depth*14)+"px";
+   const expanded=expandedFolders.has(item.path),cached=folderNodes.get(item.path);
+   const toggle=element("button",expanded?"▾":"▸","tree-toggle");toggle.type="button";toggle.setAttribute("aria-label",(expanded?"Collapse ":"Expand ")+item.name);toggle.setAttribute("aria-expanded",String(expanded));toggle.disabled=!!cached&&!cached.folders.length;
+   toggle.onclick=async()=>{if(expanded){expandedFolders.delete(item.path);drawFolderTree();return;}toggle.disabled=true;toggle.textContent="…";try{await readTreeFolder(item.path);expandedFolders.add(item.path);$("#folder-tree-error").textContent="";}catch(e){$("#folder-tree-error").textContent=e.message;}finally{drawFolderTree();}};
+   const button=element("button",undefined,"tree-folder-name");button.type="button";button.title=item.path;button.append(element("span","▰","tree-folder-icon"),element("span",item.name));if(item.path===currentFolder)button.setAttribute("aria-current","true");
+   button.onclick=()=>selectPhotoFolder(item.path,$("#tree-recursive").checked).catch(e=>$("#folder-tree-error").textContent=e.message);
+   row.append(toggle,button);li.append(row);if(expanded&&cached?.folders.length)li.append(branch(cached.folders,depth+1));list.append(li);
+  }return list;
+ }
+ host.append(branch(folderRoots));
+}
+$("#folder-tree-refresh").onclick=async()=>{folderNodes.clear();$("#folder-tree-error").textContent="";await initializeFolderTree();for(const path of expandedFolders){try{await readTreeFolder(path);}catch{expandedFolders.delete(path);}}drawFolderTree();};
+$("#tree-recursive").onchange=()=>{if(currentFolder)selectPhotoFolder(currentFolder,$("#tree-recursive").checked).catch(e=>$("#folder-tree-error").textContent=e.message);};
+async function selectPhotoFolder(path,recursive=false){
+ const revision=++folderLoadRevision;$("#folder-tree-error").textContent="";$("#folder-tree").setAttribute("aria-busy","true");
+ try{
+ const data=await api("/api/folder",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path,recursive})});
+ if(revision!==folderLoadRevision)return;
+ syncActiveRecipe();selectionVersion++;renderRevision++;renderController?.abort();selected=null;fullWidth=fullHeight=0;clearDetailTiles(true);selectedIds.clear();undoStack=[];future=[];files=data.files;filter="all";$("#search").value="";for(const b of document.querySelectorAll("[data-filter]"))b.classList.toggle("active",b.dataset.filter==="all");
  photo.hidden=true;$("#empty").hidden=false;$("#loading").hidden=true;$("#filename").textContent="Choose a photo";$("#file-subtitle").textContent=files.length+" RAW file"+(files.length===1?"":"s")+" in this folder";$("#photo-info").textContent="";$("#preview-kind").textContent="No photo selected";$("#recipe-state").textContent="Recipe retained";
  $("#compare").disabled=$("#export-image").disabled=true;resetView();
- $("#input-folder").textContent=data.folder;$("#input-folder").title=data.folder;$("#folder-dialog").close();drawLibrary();
+ currentFolder=data.folder;folderPath=data.folder;$("#tree-recursive").checked=recursive;$("#current-folder-name").textContent=data.folder.split("/").filter(Boolean).pop()||"/";$("#current-folder-path").textContent=data.folder;$("#current-folder-count").textContent=files.length+" RAW photos";
+ $("#input-folder").textContent=data.folder;$("#input-folder").title=data.folder;drawLibrary();drawFolderTree();
+ revealFolder(data.folder).catch(e=>$("#folder-tree-error").textContent=e.message);
  if(data.limit_reached)toast("The library is limited to the first 5,000 RAW files in this folder.");
  const first=files.find(f=>f.local);if(first)await openPhoto(first);else if(!files.length)toast("This folder contains no compatible RAW files.");
- }catch(e){$("#folder-error").textContent=e.message;}finally{button.disabled=false;button.textContent="Choose This Folder";}
-};
+ }finally{if(revision===folderLoadRevision)$("#folder-tree").setAttribute("aria-busy","false");}
+}
+initializeFolderTree();
 
 function updateOpticsStatus(){
  const note=$("#optics-status");if(!note)return;

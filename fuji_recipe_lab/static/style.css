@@ -86,3 +86,56 @@ body{background:radial-gradient(circle at 50% 0,#2b2118 0,var(--bg) 46%)}
 .workspace.hide-library .resize-left,.workspace.hide-editor .resize-right{display:none}
 body.layout-resizing{cursor:col-resize;user-select:none}body.layout-resizing.vertical{cursor:row-resize}
 @media(max-width:800px){.activity-bar{top:104px}.panel-resizer,.viewer-resizer{display:none}.workspace{--viewer-head:62px!important;--viewer-bottom:190px!important}}
+/* Folder navigation stays separate from photo selection in the carousel. */
+.library .section-heading{align-items:center;margin-bottom:6px}
+.section-heading .quiet{padding:2px 6px;font-size:18px}
+.folder-tree-hint{margin:0 17px 12px;font-size:11px;line-height:1.5;color:var(--muted)}
+.folder-tree{flex:1;min-height:0;overflow:auto;padding:4px 0 12px}
+.folder-tree ul{list-style:none;margin:0;padding:0}
+.tree-folder-row{display:flex;align-items:center;min-width:max-content;border-left:2px solid transparent}
+.tree-folder-row.active{background:#443723;border-left-color:var(--accent)}
+.tree-folder-row button{border:0;background:transparent;border-radius:2px;padding:8px 5px;text-align:left}
+.tree-folder-row button:hover{background:#ffffff0b}
+.tree-toggle{width:25px;flex:0 0 25px;color:var(--muted)}
+.tree-toggle:disabled{visibility:hidden}
+.tree-folder-name{display:flex;align-items:center;gap:8px;flex:1;font-size:12px;white-space:nowrap}
+.tree-folder-icon{color:var(--accent)}
+.folder-current{border-top:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:7px}
+.folder-current small{letter-spacing:1.3px;font-size:9px;color:var(--muted)}
+.folder-current strong{font-size:13px;overflow-wrap:anywhere}
+.folder-current>span{font-size:10px;color:var(--muted);overflow-wrap:anywhere;line-height:1.4}
+.folder-current label{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:11px}
+#library-panel .folder-current label input{display:inline-block;width:auto;margin:0;accent-color:var(--accent)}
+#folder-tree-error:empty{display:none}
+#folder-tree-error{padding:0 16px;font-size:11px;color:#e4b58e}
+.photo-filters{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:5px 19px;background:#211a13}
+.photo-filters .search{margin:0;max-width:220px;flex:1;padding:2px 7px}
+.photo-filters .search input{margin:0;padding:5px 0}
+.photo-filters .filters{margin:0;flex:0 1 230px}
+.photo-filters>span{margin-left:auto;white-space:nowrap;color:var(--muted);font-size:10px}
+#connection-status{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:100;max-width:90vw;background:#493420;border:1px solid #b8945c;border-radius:6px;padding:10px 16px;box-shadow:0 4px 30px #0008}
+#connection-status button{margin-left:12px}
+
+/* Compact chrome: retain readable controls and thumbnails, give space to photos. */
+.topbar{height:60px}
+.brand small{margin-top:4px}
+.view-toolbar{height:36px}
+.workspace{height:calc(100dvh - 96px);--viewer-head:52px;--viewer-bottom:218px}
+.activity-bar{top:94px}
+.viewer-bar{padding:6px 18px}
+.preview-caption{min-height:26px;padding:6px 22px}
+.film-edge{height:10px;flex-basis:10px}
+.film-edge::before{top:3px;height:4px}
+.filmstrip-toolbar{min-height:40px;padding:4px 19px}
+.photo-info{min-height:24px;padding:6px 22px}
+.filmstrip{padding-top:6px;padding-bottom:6px}
+.strip-entry,.strip-item{height:86px}
+.strip-visual{height:60px;flex-basis:60px}
+.strip-caption{height:24px}
+@media(max-width:800px){
+ .topbar{height:56px}
+ .workspace{height:calc(100dvh - 92px)}
+ .activity-bar{top:90px}
+ .viewer-bar{padding:6px 8px}
+ .filmstrip-toolbar{padding:4px 10px}
+}

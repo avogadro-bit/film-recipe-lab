@@ -8,12 +8,12 @@ from a similar camera/lens; no second automatic correction of linear DNGs.
 from functools import lru_cache
 import json
 from pathlib import Path
-import shutil
 import struct
 import subprocess
 import numpy as np
 from scipy.ndimage import map_coordinates
 from .raw import require_local
+from .external_tools import find_exiftool
 
 
 def parse_warp(data):
@@ -59,6 +59,52 @@ def remap(linear,coordinates):
     return result
 
 
+@lru_cache(maxsize=64)
+def _warp_scale(w,h,coefficients,center):
+    warp={'coefficients':coefficients,'center':center}
+    def bounds(scale):
+        edge=np.concatenate([warp_coordinates(w,h,0,1,warp,scale).reshape(-1,2),
+            warp_coordinates(w,h,h-1,1,warp,scale).reshape(-1,2)])
+        return np.all((edge>=0)&(edge<=np.array([w-1,h-1])))
+    if bounds(1.):return 1.
+    lo,hi=1.,2.
+    if not bounds(hi):raise ValueError('Recadrage DNG hors limites')
+    for _ in range(20):
+        mid=(lo+hi)/2
+        if bounds(mid):hi=mid
+        else:lo=mid
+    return hi
+
+
+def dng_corrected_region(linear,profile,box,step=1):
+    """Sample only requested output pixels; coordinates match full correction.
+
+    The sparse step is for global tone statistics, not tile downsampling.
+    Source rotations are views, avoiding an extra full-resolution allocation.
+    """
+    rotation={1:0,3:2,6:3,8:1}[profile['orientation']]
+    source=np.rot90(linear,-rotation)
+    h,w=source.shape[:2];warp=profile['warp']
+    scale=_warp_scale(w,h,tuple(warp['coefficients']),tuple(warp['center']))
+    cx,cy=np.asarray(warp['center'])*[w-1,h-1]
+    radius=np.hypot(max(cx,w-1-cx),max(cy,h-1-cy))
+    x0,y0,x1,y1=box
+    xs=np.arange(x0,x1,step,dtype=np.float32)
+    ys=np.arange(y0,y1,step,dtype=np.float32)
+    result=np.empty((len(ys),len(xs),3),np.float32)
+    for start in range(0,len(ys),128):
+        xx,yy=np.meshgrid(xs,ys[start:start+128])
+        if rotation==1:xx,yy=w-1-yy,xx
+        elif rotation==2:xx,yy=w-1-xx,h-1-yy
+        elif rotation==3:xx,yy=yy,h-1-xx
+        dx=(xx-cx)/(radius*scale);dy=(yy-cy)/(radius*scale);r2=dx*dx+dy*dy
+        k=warp['coefficients'];f=k[0]+r2*(k[1]+r2*(k[2]+r2*k[3]))
+        coords=np.stack([cy+radius*dy*f,cx+radius*dx*f]).astype(np.float32)
+        for channel in range(3):
+            result[start:start+len(yy),:,channel]=map_coordinates(source[...,channel],coords,order=1,mode='nearest',prefilter=False)
+    return result
+
+
 @lru_cache(maxsize=1)
 def database():
     try:import lensfunpy
@@ -89,10 +135,11 @@ def _number(value,default=0.):
 @lru_cache(maxsize=64)
 def _inspect(path,mtime,size):
     base={'distortion':False,'vignetting':False,'source':'none','label':'No lens profile identified','orientation':1}
-    if not shutil.which('exiftool'):return {**base,'label':'ExifTool missing: lens profile unavailable'}
+    executable = find_exiftool()
+    if not executable:return {**base,'label':'ExifTool missing: lens profile unavailable'}
     tags=['Make','Model','LensModel','LensID','LensType','FocalLength','FNumber','Orientation',
           'PhotometricInterpretation','Software','OpcodeList3','DefaultScale']
-    result=subprocess.run(['exiftool','-j','-n',*['-'+t for t in tags],str(path)],capture_output=True,text=True,check=True,timeout=20)
+    result=subprocess.run([executable,'-j','-n',*['-'+t for t in tags],str(path)],capture_output=True,text=True,check=True,timeout=20)
     metadata=json.loads(result.stdout)[0];metadata.pop('SourceFile',None)
     orientation=int(_number(metadata.get('Orientation'),1))
     base.update(metadata=metadata,orientation=orientation)
@@ -109,7 +156,7 @@ def _inspect(path,mtime,size):
         if not native:return {**base,'label':'Transformed or unvalidated DNG: automatic correction disabled'}
         if metadata.get('DefaultScale') not in (None,'1 1'):
             return {**base,'label':'Unsupported DNG scale'}
-        blob=subprocess.run(['exiftool','-b','-OpcodeList3',str(path)],capture_output=True,check=True,timeout=20).stdout
+        blob=subprocess.run([executable,'-b','-OpcodeList3',str(path)],capture_output=True,check=True,timeout=20).stdout
         try:warp=parse_warp(blob)
         except ValueError as exc:return {**base,'label':str(exc)}
         return {**base,'distortion':True,'source':'dng-warp','warp':warp,
@@ -142,20 +189,7 @@ def apply_corrections(linear,profile,distortion='off',vignetting='off'):
     h,w=a.shape[:2]
     if profile['source']=='dng-warp':
         warp=profile['warp']
-        # Preserve dimensions. Zoom only if the warp would expose empty edges.
-        def bounds(scale):
-            edge=np.concatenate([warp_coordinates(w,h,0,1,warp,scale).reshape(-1,2),
-                warp_coordinates(w,h,h-1,1,warp,scale).reshape(-1,2)])
-            return np.all((edge>=0)&(edge<=np.array([w-1,h-1])))
-        scale=1.
-        if not bounds(scale):
-            lo,hi=1.,2.
-            if not bounds(hi):raise ValueError('Recadrage DNG hors limites')
-            for _ in range(20):
-                mid=(lo+hi)/2
-                if bounds(mid):hi=mid
-                else:lo=mid
-            scale=hi
+        scale=_warp_scale(w,h,tuple(warp['coefficients']),tuple(warp['center']))
         a=remap(a,lambda start,rows:warp_coordinates(w,h,start,rows,warp,scale))
     else:
         import lensfunpy

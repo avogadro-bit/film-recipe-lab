@@ -3,13 +3,13 @@ from collections import Counter
 from pathlib import Path
 import hashlib
 import json
-import shutil
 import subprocess
 import time
 
 import numpy as np
 from PIL import Image, ImageCms
 import rawpy
+from .external_tools import find_exiftool
 
 
 def local_file(path: Path) -> bool:
@@ -52,12 +52,13 @@ def normalize_exif(data):
 
 def exif(path: Path) -> dict:
     require_local(path)
-    if not shutil.which("exiftool"):
+    executable = find_exiftool()
+    if not executable:
         if path.suffix.lower() == '.dng':
             return dng_input_metadata(path)
         return {"metadata_available": False, "reason": "ExifTool missing"}
     tags = ["BaselineExposure", "Make", "Model", "RawImageFullSize", "ImageWidth", "ImageHeight", "ISO", "ExposureTime", "FNumber", "FilmMode", "WhiteBalance", "WhiteBalanceFineTune", "DynamicRange", "DevelopmentDynamicRange", "HighlightTone", "ShadowTone", "Saturation", "Sharpness", "NoiseReduction", "GrainEffectRoughness", "GrainEffectSize", "ColorChromeEffect", "ColorChromeFXBlue", "Clarity", "DNGVersion", "PhotometricInterpretation", "Software", "ColorMatrix1", "ColorMatrix2", "ForwardMatrix1", "ForwardMatrix2", "AsShotNeutral", "CFARepeatPatternDim", "CFAPattern2", "BlackLevel", "WhiteLevel", "CalibrationIlluminant1", "CalibrationIlluminant2"]
-    result = subprocess.run(["exiftool", "-j", "-G1", "-a", *["-" + t for t in tags], str(path)], capture_output=True, text=True, check=True, timeout=20)
+    result = subprocess.run([executable, "-j", "-G1", "-a", *["-" + t for t in tags], str(path)], capture_output=True, text=True, check=True, timeout=20)
     data = json.loads(result.stdout)[0]
     return normalize_exif(data)
 

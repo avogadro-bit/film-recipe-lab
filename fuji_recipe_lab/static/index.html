@@ -12,12 +12,20 @@
   <span class="offline"><i></i> No camera required</span>
   <div class="top-actions"><button id="choose-folder" class="primary">Open Folder</button><button id="import" class="quiet">Import Files</button><button id="setup" class="quiet">Setup</button><button id="about" class="quiet">Engine Status</button></div>
 </header>
-<div class="view-toolbar"><button id="toggle-library" aria-pressed="true" aria-controls="library-panel">Library</button><span id="input-folder">No folder selected</span><button id="focus-view" title="Hide or show both panels (Tab)">Photo View</button><button id="toggle-editor" aria-pressed="true" aria-controls="editor-panel">Settings</button></div>
+<div class="view-toolbar"><button id="toggle-library" aria-pressed="true" aria-controls="library-panel">Folders</button><span id="input-folder">No folder selected</span><button id="focus-view" title="Hide or show both panels (Tab)">Photo View</button><button id="toggle-editor" aria-pressed="true" aria-controls="editor-panel">Settings</button></div>
 <div id="activity-bar" class="activity-bar" role="progressbar" aria-label="Processing" aria-valuetext="Idle" hidden><span></span></div>
+<div id="connection-status" role="status" hidden><span id="connection-message"></span><button id="connection-retry">Check connection</button></div>
 <main class="workspace">
   <div class="panel-resizer resize-left" data-resize="left" role="separator" aria-label="Resize library" aria-orientation="vertical" tabindex="0"></div>
   <div class="panel-resizer resize-right" data-resize="right" role="separator" aria-label="Resize settings" aria-orientation="vertical" tabindex="0"></div>
-  <aside class="library" id="library-panel"><div class="section-heading">LIBRARY <span id="count">0</span></div><label class="search"><span>⌕</span><input id="search" placeholder="Search photos" aria-label="Search photos"></label><div class="filters" role="group" aria-label="Filter by format"><button class="active" data-filter="all">All</button><button data-filter="RAF">RAF</button><button data-filter="DNG">DNG</button><button data-filter="OTHER">Other RAW</button></div><div id="file-list" class="file-list"></div><div class="library-foot">Your originals remain untouched.<br>Files are processed locally on this Mac.</div></aside>
+  <aside class="library" id="library-panel">
+    <div class="section-heading">FOLDERS <button id="folder-tree-refresh" class="quiet" title="Refresh folders" aria-label="Refresh folders">↻</button></div>
+    <p class="folder-tree-hint">Expand with the arrow. Click a folder to view its photos.</p>
+    <nav id="folder-tree" class="folder-tree" aria-label="Photo folders"></nav>
+    <p id="folder-tree-error" role="status"></p>
+    <div class="folder-current"><small>SELECTED FOLDER</small><strong id="current-folder-name">None</strong><span id="current-folder-path">Choose a folder to begin</span><label><input id="tree-recursive" type="checkbox"> Include subfolders</label><span id="current-folder-count"></span></div>
+    <div class="library-foot">Your originals remain untouched.<br>Files are processed locally on this Mac.</div>
+  </aside>
   <section class="viewer">
     <div class="viewer-bar"><div><strong id="filename">Your next photograph.</strong><small id="file-subtitle">Multi-camera RAW · one place for your recipes</small></div><button id="compare" class="quiet" title="Compare the recipe with the RAW development without a film simulation" disabled>View Without Film</button><div class="zoom-controls"><button id="zoom-out" aria-label="Zoom out" disabled>−</button><select id="zoom" aria-label="Preview zoom" disabled><option value="fit">Fit</option><option value="0.5">50%</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select><button id="zoom-in" aria-label="Zoom in" disabled>+</button></div></div>
     <div class="viewer-resizer resize-top" data-resize="top" role="separator" aria-label="Resize upper frame" aria-orientation="horizontal" tabindex="0"></div>
@@ -26,6 +34,7 @@
     <div class="preview-caption"><span id="preview-kind">No photo selected</span><span id="recipe-state"></span></div>
     <div class="viewer-resizer resize-bottom" data-resize="bottom" role="separator" aria-label="Resize lower frame" aria-orientation="horizontal" tabindex="0"></div>
     <div class="viewer-bottom"><div class="filmstrip-toolbar"><div><strong>PHOTOS</strong><span>Click a thumbnail to work on it alone · tick the circle to include it in a group</span></div><div class="selection-summary"><span id="selection-state" aria-live="polite">No photo selected</span><button id="selection-clear" type="button" disabled>Keep current only</button></div></div>
+    <div class="photo-filters"><label class="search"><span>⌕</span><input id="search" placeholder="Search photos" aria-label="Search photos"></label><div class="filters" role="group" aria-label="Filter by format"><button class="active" data-filter="all">All</button><button data-filter="RAF">RAF</button><button data-filter="DNG">DNG</button><button data-filter="OTHER">Other RAW</button></div><span><span id="count">0</span> photos</span></div>
     <div id="filmstrip" class="filmstrip" aria-label="Photo carousel. Click a thumbnail to view it alone, or tick its circle to include it in a group."></div><div class="film-edge film-edge-bottom" aria-hidden="true"></div><div id="photo-info" class="photo-info">Local RAW development · no camera required.</div></div>
   </section>
   <aside class="editor" id="editor-panel">

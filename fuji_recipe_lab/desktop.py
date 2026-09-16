@@ -33,10 +33,14 @@ def main(argv=None):
     parser.add_argument("--no-browser", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
+        open_browser = not args.no_browser and os.environ.get("FILM_RECIPE_LAB_NO_BROWSER") != "1"
+        if sys.platform == "darwin" and getattr(sys, "frozen", False) and open_browser:
+            from fuji_recipe_lab.macos_app import run
+            return run(args.root, args.port)
         serve(
             args.root,
             args.port,
-            open_browser=not args.no_browser and os.environ.get("FILM_RECIPE_LAB_NO_BROWSER") != "1",
+            open_browser=open_browser,
         )
         return 0
     except Exception as exc:

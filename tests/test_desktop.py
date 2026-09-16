@@ -2,11 +2,30 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from fuji_recipe_lab import desktop
 
 
 class DesktopTests(unittest.TestCase):
+    def test_frozen_macos_uses_native_lifecycle(self):
+        from unittest.mock import Mock
+        run = Mock(return_value=0)
+        with patch.object(desktop.sys, "frozen", True, create=True), \
+             patch.object(desktop.sys, "platform", "darwin"), \
+             patch.dict("sys.modules", {"fuji_recipe_lab.macos_app": SimpleNamespace(run=run)}), \
+             patch("fuji_recipe_lab.desktop.serve") as serve:
+            self.assertEqual(desktop.main(["--port", "8877"]), 0)
+            run.assert_called_once_with([], 8877)
+            serve.assert_not_called()
+
+    def test_frozen_headless_bypasses_native_lifecycle(self):
+        with patch.object(desktop.sys, "frozen", True, create=True), \
+             patch.object(desktop.sys, "platform", "darwin"), \
+             patch("fuji_recipe_lab.desktop.serve") as serve:
+            self.assertEqual(desktop.main(["--no-browser"]), 0)
+            serve.assert_called_once_with([], 8765, open_browser=False)
+
     def test_desktop_entry_opens_browser_by_default(self):
         with patch("fuji_recipe_lab.desktop.serve") as serve:
             self.assertEqual(desktop.main(["--port", "8877"]), 0)

@@ -11,6 +11,22 @@ def opcode(coeff=(1,0,0,0,0,0),center=(.5,.5)):
 
 
 class OpticsTests(unittest.TestCase):
+    def test_regional_dng_correction_matches_full_frame_and_sparse_statistics(self):
+        from fuji_recipe_lab.optics import dng_corrected_region
+        source=np.random.default_rng(8).uniform(-.2,4,(83,117,3)).astype(np.float32)
+        for coefficient in (-.1,.08):
+            for orientation,k in ((1,0),(3,2),(6,3),(8,1)):
+                with self.subTest(coefficient=coefficient,orientation=orientation):
+                    a=np.rot90(source,k)
+                    profile={'orientation':orientation,'source':'dng-warp','distortion':True,
+                             'warp':parse_warp(opcode((1,coefficient,0,0,0,0),(.4,.55)))}
+                    full=apply_corrections(a,profile,'auto')
+                    for box in ((0,0,30,25),(21,17,65,60),(0,0,a.shape[1],a.shape[0])):
+                        x0,y0,x1,y1=box
+                        np.testing.assert_allclose(dng_corrected_region(a,profile,box),full[y0:y1,x0:x1],atol=1e-6)
+                    sparse=dng_corrected_region(a,profile,(0,0,a.shape[1],a.shape[0]),7)
+                    np.testing.assert_allclose(sparse,full[::7,::7],atol=1e-6)
+
     def test_identity_and_radial_mapping_follow_dng_coordinates(self):
         xy=warp_coordinates(101,81,0,81,parse_warp(opcode()))
         yy,xx=np.mgrid[:81,:101]

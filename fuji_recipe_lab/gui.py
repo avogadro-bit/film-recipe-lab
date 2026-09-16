@@ -42,6 +42,8 @@ class TileRequest(BaseModel):
     y: int = Field(ge=0)
     size: int = Field(default=512, ge=128, le=1024)
     level: Literal[1,2,4,8] = 1
+    view_id: str = Field(default='', max_length=64)
+    generation: int = Field(default=0, ge=0)
 
 
 class BatchExportRequest(BaseModel):
@@ -96,6 +98,8 @@ class Library:
         self.linear_cache = OrderedDict()
         self.corrected_cache = OrderedDict()
         self.tile_cache = OrderedDict()
+        self.tile_generations = OrderedDict()
+        self.optics_samples = OrderedDict()
         self.lock = threading.RLock()
         self.decoder_lock = threading.Semaphore(1)
         self.full_render_lock = threading.Semaphore(1)
@@ -300,7 +304,7 @@ class Library:
                 linear = self.linear_cache[request.id]
             return finish(linear)
 
-    def full_linear(self, identifier):
+    def full_linear(self, identifier, check_current=lambda:None):
         """Decode once; viewport tiles and export share the active RAW buffer."""
         with self.lock:
             item=self.files[identifier]
@@ -308,6 +312,7 @@ class Library:
         if not local_file(path):
             raise ValueError("The iCloud file is not downloaded. Open Finder to download it.")
         with self.decoder_lock:
+            check_current()
             if identifier not in self.linear_cache:
                 self.linear_cache[identifier]=decode(path,preview=False)
                 while len(self.linear_cache)>1:self.linear_cache.popitem(last=False)
@@ -316,6 +321,16 @@ class Library:
 
     def render_tile(self, request):
         """Render one source-resolution viewport tile, never a giant browser JPEG."""
+        with self.lock:
+            if request.view_id:
+                self.tile_generations[request.view_id]=max(request.generation,self.tile_generations.get(request.view_id,0))
+                self.tile_generations.move_to_end(request.view_id)
+                while len(self.tile_generations)>128:self.tile_generations.popitem(last=False)
+        def check_current():
+            with self.lock:
+                if request.view_id and request.generation<self.tile_generations.get(request.view_id,0):
+                    raise ValueError('Superseded viewport')
+        check_current()
         recipe_key=hashlib.sha256(request.recipe.model_dump_json().encode()).hexdigest()[:20]
         cache_key=(request.id,recipe_key,request.x,request.y,request.size,request.level)
         with self.lock:
@@ -323,10 +338,17 @@ class Library:
                 self.tile_cache.move_to_end(cache_key)
                 return self.tile_cache[cache_key]
             item=self.files[request.id]
-        path=Path(item['path']);linear=self.full_linear(request.id)
+        path=Path(item['path']);linear=self.full_linear(request.id,check_current)
+        check_current();regional_profile=None
         optics_key=(request.id,request.recipe.lens_distortion,request.recipe.lens_vignetting)
         if request.recipe.lens_distortion!='off' or request.recipe.lens_vignetting!='off':
+            from .optics import inspect_optics, apply_corrections, dng_corrected_region
+            profile=inspect_optics(path)
+            if profile.get('source')=='dng-warp' and request.recipe.lens_distortion=='auto':
+                regional_profile=profile
+        if (request.recipe.lens_distortion!='off' or request.recipe.lens_vignetting!='off') and regional_profile is None:
             with self.full_render_lock:
+                check_current()
                 with self.lock:corrected=self.corrected_cache.get(optics_key)
                 if corrected is None:
                     from .optics import inspect_optics, apply_corrections
@@ -350,11 +372,23 @@ class Library:
         rx1=min(linear.shape[1],((sx1+halo+level-1)//level)*level)
         ry1=min(linear.shape[0],((sy1+halo+level-1)//level)*level)
         sample_step=max(1,max(linear.shape[:2])//640)
-        context={'sample':linear[::sample_step,::sample_step],
+        check_current()
+        sample=linear[::sample_step,::sample_step]
+        if regional_profile is not None:
+            with self.lock:sample=self.optics_samples.get(optics_key)
+            if sample is None:
+                sample=dng_corrected_region(linear,regional_profile,(0,0,linear.shape[1],linear.shape[0]),sample_step)
+                with self.lock:
+                    self.optics_samples[optics_key]=sample
+                    while len(self.optics_samples)>2:self.optics_samples.popitem(last=False)
+            region=dng_corrected_region(linear,regional_profile,(rx0,ry0,rx1,ry1))
+        else:region=linear[ry0:ry1,rx0:rx1]
+        context={'sample':sample,
                  'full_shape':((linear.shape[0]+level-1)//level,
                                (linear.shape[1]+level-1)//level,3)}
-        region=downsample_box(linear[ry0:ry1,rx0:rx1],level)
+        region=downsample_box(region,level)
         with self.tile_render_lock:
+            check_current()
             pixels=render(region,request.recipe,output_transform=False,context=context,
                           origin=(ry0//level,rx0//level))
         crop_x0=(sx0-rx0)//level;crop_y0=(sy0-ry0)//level
@@ -466,6 +500,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if route == "/api/folders":
                 return self.send(200,self.server.library.folders(parse_qs(urlparse(self.path).query).get("path",[None])[0]))
+            if route == "/api/health":
+                return self.send(200, {"ready": True})
             if route == "/api/library":
                 return self.send(200, {"files": self.server.library.listing(), "engine": studio_status(), "native_engine": status(), "recipe": Recipe().model_dump()})
             if route.startswith("/api/photo/"):
@@ -583,7 +619,7 @@ def bind_studio_server(port):
         return ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 
 
-def serve(roots, port=8765, open_browser=False):
+def serve(roots, port=8765, open_browser=False, on_ready=None):
     if not 1024 <= port <= 65535:
         raise ValueError("Port must be between 1024 and 65535")
     with tempfile.TemporaryDirectory(prefix="film-recipe-lab-") as scratch:
@@ -602,6 +638,8 @@ def serve(roots, port=8765, open_browser=False):
             launcher.daemon = True
             launcher.start()
         try:
+            if on_ready is not None:
+                on_ready(server, session_url)
             server.serve_forever()
         except KeyboardInterrupt:
             pass

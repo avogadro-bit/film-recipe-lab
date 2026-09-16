@@ -18,7 +18,7 @@ DEST = ROOT / 'build' / 'release-notices'
 SOURCES = ROOT / 'build' / 'dependency-sources'
 PACKAGES = ('rawpy', 'lensfunpy', 'numpy', 'scipy', 'pillow', 'pydantic',
             'pydantic_core', 'tifffile', 'typing_extensions', 'typing-inspection',
-            'annotated-types', 'packaging')
+            'annotated-types', 'packaging', 'pyobjc-core', 'pyobjc-framework-Cocoa')
 ARCHIVES = {
     'rawpy-0.27.1': 'https://codeload.github.com/letmaik/rawpy/tar.gz/refs/tags/v0.27.1',
     'LibRaw-b860248': 'https://codeload.github.com/LibRaw/LibRaw/tar.gz/b860248a89d9082b8e0a1e202e516f46af9adb29',
@@ -69,12 +69,22 @@ def main():
     for name in PACKAGES:
         dist = distribution(name)
         copied = []
+        package_dir = DEST / 'python-packages' / name
+        if package_dir.exists():
+            shutil.rmtree(package_dir)
         for entry in dist.files:
-            if license_file(entry):
+            if license_file(entry) and not any(part == 'PyObjCTest' for part in entry.parts):
                 target = DEST / 'python-packages' / name / str(entry)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(dist.locate_file(entry), target)
                 copied.append(str(target.relative_to(DEST)))
+        # The core wheel declares MIT but omits the actual license file.
+        if not copied and name == 'pyobjc-core':
+            target = package_dir / 'License.txt'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            url = f'https://raw.githubusercontent.com/ronaldoussoren/pyobjc/v{dist.version}/pyobjc-core/License.txt'
+            subprocess.run(['curl', '-fL', '--retry', '2', '--silent', '--show-error', url, '-o', str(target)], check=True)
+            copied.append(str(target.relative_to(DEST)))
         if not copied:
             raise RuntimeError(f'No installed license found: {name}')
         packages.append({'name': name, 'version': dist.version, 'licenses': copied,

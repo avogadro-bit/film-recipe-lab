@@ -18,7 +18,7 @@ class ShootingMetadataTests(unittest.TestCase):
                 extratags=[(271, 's', 0, 'LEICA CAMERA AG', False),
                            (272, 's', 0, 'LEICA Q3 43', False),
                            (50730, '2i', 1, (-1, 2), False)])
-            with patch('fuji_recipe_lab.raw.shutil.which', return_value=None):
+            with patch('fuji_recipe_lab.raw.find_exiftool', return_value=None):
                 metadata = exif(path)
             self.assertEqual(metadata['BaselineExposure'], -.5)
             self.assertEqual(metadata['Model'], 'LEICA Q3 43')
