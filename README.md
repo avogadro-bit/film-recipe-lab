@@ -1,0 +1,90 @@
+# Film Recipe Lab
+
+A local RAW studio that works without a connected camera. It develops photographs through an independent photo adapter and the official GFX ETERNA 55 LUTs, which must be installed separately. The interface is in English and starts with PROVIA / Standard.
+
+**This project is neither a Fujifilm product nor an exact reproduction of the Fujifilm image engine.** The video LUTs are official; their adaptation to photographic RAW files and the recipe controls are independent and do not guarantee an X RAW STUDIO match. The separate native-engine research workbench does not produce images.
+
+## Features
+
+- Intuitive input-folder browser with familiar locations, breadcrumbs, optional subfolders, and multi-camera RAW support through LibRaw (RAF, DNG, CR3, NEF, ARW, RW2, and others).
+- Collapsible side panels, preview zoom, and panning.
+- Film simulations, exposure, DR, highlight and shadow tone, white balance with an R/B grid, color, grain, and effects.
+- A recipe for every photograph, plus clear multi-selection in the bottom carousel for linked adjustments.
+- JSON recipes, C1–C7 slots, without-film comparison, color-managed JPEG or 8/16-bit TIFF export, and JPEG batch export as ZIP.
+- Original files remain untouched and no photographs are sent to a remote service.
+
+## Installation
+
+Python **3.11 or newer** is required. macOS is the platform tested with real photographs. Linux and Windows have a proposed CI matrix, but no remote CI result has been validated yet.
+
+From the repository directory:
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+On Windows, use `py -3 -m venv .venv`, then `.venv\Scripts\Activate.ps1` in PowerShell.
+
+Install **ExifTool** and make it available on `PATH`: [official website](https://exiftool.org/). On macOS with Homebrew, run `brew install exiftool`. Without ExifTool, metadata and some input profiles are unavailable and rendering can differ.
+
+For Lensfun profiles, run `python -m pip install -e '.[optics]'`. Embedded Leica DNG corrections do not require Lensfun. In the GUI, open **Lens Corrections**, then select **Automatic Profile** for distortion and/or vignetting. The status text reports which corrections are available. Both controls are off by default. See [coverage and validation](docs/OPTICS_AND_NORMALIZATION.md).
+
+### Official LUTs
+
+The `.cube` files are not distributed with this code.
+
+On first launch, the **Setup** dialog provides a direct **Download from Fujifilm** button. After the download, choose the ZIP in the same dialog. The local installer verifies and installs the ten F-Log2 / 65Grid tables. The archive and LUTs are never uploaded to a remote service.
+
+For command-line installation, download **GFX ETERNA 55 v1.10** from the [official Fujifilm LUT page](https://www.fujifilm-x.com/global/support/download/lut/), review its terms, and run:
+
+```sh
+python -m fuji_recipe_lab.lut_install "/path/to/gfx-eterna-55-3d-lut-v110.zip"
+```
+
+The installer compares each table against its expected SHA-256. A different or modified archive is rejected. LUTs remain outside the repository in `~/.local/share/fuji-recipe-lab/luts`. Set `FUJI_RECIPE_LUT_DIR` to use another directory. The application links to Fujifilm's server and does not redistribute or substitute missing films.
+
+## Run
+
+```sh
+python -m fuji_recipe_lab gui --port 8766
+```
+
+Open the **complete session link shown in the terminal**, then choose **Open Folder**. The server listens only on `127.0.0.1`; keep the terminal open. If the requested port is occupied, the application selects and prints an available port. On macOS, `Launch Film Recipe Lab.command` uses the repository's `.venv` environment.
+
+To add a starting location: `python -m fuji_recipe_lab gui --root "/path/to/Photos" --port 8766`. Folders are scanned only after explicit selection in the GUI.
+
+## Output dimensions
+
+**Image Size: L**, **Image Aspect: Original**, and **Digital Teleconverter: Off** preserve the dimensions produced by the full-resolution RAW decoder. **JPEG Quality: Fine** changes compression quality only; it does not resize the image. A non-original aspect ratio or digital teleconverter crops the output. Some lens-correction profiles can also alter the usable image boundary. RAW sensor dimensions can include masked margins, so the developed dimensions are not always identical to the nominal sensor dimensions or an in-camera JPEG.
+
+## Tests and sharing
+
+```sh
+python -m pip install -e '.[emulation,optics]'
+python -m unittest discover -s tests -v
+python -m compileall -q fuji_recipe_lab scripts tests
+node --check fuji_recipe_lab/static/app.js
+python scripts/check_release.py
+```
+
+Color integration tests are skipped explicitly when the LUTs are not installed. Synthetic tests, HTTP checks, and the installer run without private photos, firmware, or a network connection. The native workbench uses Unicorn and Capstone through the `emulation` extra; they are not needed to run the studio. Node is used only for JavaScript syntax validation.
+
+The sharing check inspects both tracked and unignored files. It does not replace a manual review of files before publication. See the [sharing audit](docs/SHARING_AUDIT.md), [third-party resources](THIRD_PARTY.md), and [GUI guide](docs/GUI.md).
+
+## Limits
+
+- Extension compatibility depends on the camera model and LibRaw version; not every camera is calibrated.
+- The developed preview uses the full-resolution RAW pipeline. Opening a photograph and changing recipes can therefore require substantially more memory and processing time than a reduced preview.
+- Adobe RGB export currently requires the macOS system profile; sRGB is portable.
+- Undownloaded iCloud files cannot be read. Individual imports are temporary and are removed when the server stops.
+- The local service is intended for a personal computer, not public or multi-user hosting. The session link grants access to the local file browser; do not share it.
+- Some research scripts reference private reports that are not distributed. They are unnecessary for running or testing the public application.
+
+[Multi-camera normalization](docs/MULTICAMERA_INPUT_V10.md) · [LUT pipeline](docs/OFFICIAL_LUT_STUDIO.md) · [Research history](HISTORY.md)
+
+## License
+
+Original code is released under the [MIT License](LICENSE). This repository grants no license to Fuji files or third-party dependencies. See [THIRD_PARTY.md](THIRD_PARTY.md).

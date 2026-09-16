@@ -1,0 +1,9 @@
+rawpy==0.26.1
+numpy==2.2.6
+Pillow==11.2.1
+pydantic==2.10.3
+tifffile==2025.5.21
+unicorn==2.1.4
+capstone==5.0.9
+
+scipy==1.18.0

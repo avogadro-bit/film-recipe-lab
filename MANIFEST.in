@@ -1,0 +1,9 @@
+include README.md HISTORY.md THIRD_PARTY.md LICENSE
+recursive-include docs *.md
+recursive-include scripts *.py
+recursive-include fuji_recipe_lab/static *.html *.js *.css
+recursive-include fuji_recipe_lab/luts *.json
+recursive-include tests *.py
+prune research
+prune outputs
+global-exclude *.cube *.bin *.DAT *.dat *.RAF *.DNG *.jpg *.npz *.npy *.pyc

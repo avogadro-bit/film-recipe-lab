@@ -1,0 +1,13 @@
+{
+  "architecture": "arm",
+  "entry": "0x10000",
+  "stop": "0x20000",
+  "instruction_limit": 10,
+  "timeout_us": 1000000,
+  "regions": [
+    {"address": "0x10000", "size": 4096, "permissions": "rx", "hex": "010080e21eff2fe1"},
+    {"address": "0x20000", "size": 4096, "permissions": "rx"}
+  ],
+  "registers": {"R0": 41, "LR": "0x20000"},
+  "provenance": "Synthetic ADD r0,#1 and BX lr. Infrastructure test only, not Fujifilm firmware. Expected R0=42."
+}

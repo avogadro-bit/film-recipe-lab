@@ -1,0 +1,58 @@
+{
+  "source": "https://dl.fujifilm-x.com/support/lut/gfx-eterna-55-3d-lut-v110.zip",
+  "model": "GFX ETERNA 55",
+  "input": "F-Log2 / F-Gamut",
+  "output": "BT.709",
+  "files": {
+    "provia": {
+      "file": "provia.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_PROVIA_65grid_V.1.00.cube",
+      "sha256": "322d1fc83072ebd4ba73287f32b88bf7fc71582ea03da459fa976a3eb6cdc68f"
+    },
+    "velvia": {
+      "file": "velvia.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_Velvia_65grid_V.1.00.cube",
+      "sha256": "80a9ac219c30e9d1c230bd157d96ab25c2e6052de3bad7dc650823de65a0ac77"
+    },
+    "astia": {
+      "file": "astia.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_ASTIA_65grid_V.1.00.cube",
+      "sha256": "164871904f39c581e5ad51bd69f254cd268b7e3d77bad6a17a54c7b22f5bcc27"
+    },
+    "classic_chrome": {
+      "file": "classic_chrome.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_CLASSIC-CHROME_65grid_V.1.00.cube",
+      "sha256": "43f7fc5f262eaa2525c0de805ad7fa50f5b77d85873840ae48ab2a07a6b36ff9"
+    },
+    "classic_negative": {
+      "file": "classic_negative.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_CLASSIC-Neg._65grid_V.1.00.cube",
+      "sha256": "f890a58d2ae278703aa09e73d6037a32cb925a6d90414292da7675e12b7dd3c9"
+    },
+    "pro_neg_std": {
+      "file": "pro_neg_std.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_PRO-Neg.Std_65grid_V.1.00.cube",
+      "sha256": "3cf531162720aa31ac09609f3dec5aca7680a4c07887cbc8502468533b434cdc"
+    },
+    "eterna": {
+      "file": "eterna.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_ETERNA_65grid_V.1.00.cube",
+      "sha256": "5c0a909c021e114adc1d1c9c8d085264db303f235d2a285f8543019062edc944"
+    },
+    "eterna_bleach": {
+      "file": "eterna_bleach.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_ETERNA-BB_65grid_V.1.00.cube",
+      "sha256": "367024b32ca0f263e2122febd1b83a024d2ffc232a1770f8e061432468ffd5a6"
+    },
+    "reala_ace": {
+      "file": "reala_ace.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_REALA-ACE_65grid_V.1.00.cube",
+      "sha256": "a57a8473d666eda294ca3c32886af7708d7097d185c20240a290e3c2a0cb7c2b"
+    },
+    "acros": {
+      "file": "acros.cube",
+      "original": "gfx-eterna-55-3d-lut-v110/65Grid/F-Log2/FLog2_to_ACROS_65grid_V.1.00.cube",
+      "sha256": "1e7b6c1b05924c5bdb9f2e922e962dcb608f2df15f38e628a9aac3a646293da4"
+    }
+  }
+}
