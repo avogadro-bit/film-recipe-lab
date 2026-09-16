@@ -9,6 +9,7 @@ import secrets
 import hashlib
 import tempfile
 import threading
+import webbrowser
 import zipfile
 from typing import Literal
 from urllib.parse import urlparse, parse_qs
@@ -573,7 +574,7 @@ def bind_studio_server(port):
         return ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 
 
-def serve(roots, port=8765):
+def serve(roots, port=8765, open_browser=False):
     if not 1024 <= port <= 65535:
         raise ValueError("Port must be between 1024 and 65535")
     with tempfile.TemporaryDirectory(prefix="film-recipe-lab-") as scratch:
@@ -581,10 +582,16 @@ def serve(roots, port=8765):
         server.daemon_threads = True
         server.session_token = secrets.token_urlsafe(32)
         server.library = Library(roots, scratch)
+        session_url = f"http://127.0.0.1:{server.server_port}/#session={server.session_token}"
         if server.server_port != port:
             print(f"Port {port} is already in use. Opening on available port {server.server_port}.", flush=True)
-        print(f"Film Recipe Lab : http://127.0.0.1:{server.server_port}/#session={server.session_token}", flush=True)
+        print(f"Film Recipe Lab : {session_url}", flush=True)
         print("Local service. Press Ctrl+C to quit. Temporary imports are removed at shutdown.", flush=True)
+        if open_browser:
+            # Defer browser launch until serve_forever has started accepting requests.
+            launcher = threading.Timer(0.2, webbrowser.open, args=(session_url,), kwargs={"new": 2})
+            launcher.daemon = True
+            launcher.start()
         try:
             server.serve_forever()
         except KeyboardInterrupt:

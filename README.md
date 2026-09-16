@@ -4,6 +4,16 @@ A local RAW studio that works without a connected camera. It develops photograph
 
 **This project is neither a Fujifilm product nor an exact reproduction of the Fujifilm image engine.** The video LUTs are official; their adaptation to photographic RAW files and the recipe controls are independent and do not guarantee an X RAW STUDIO match. The separate native-engine research workbench does not produce images.
 
+## macOS application
+
+The GitHub release provides a self-contained **Film Recipe Lab.app** for Apple
+Silicon Macs running macOS 14 or newer, in ZIP and DMG formats. It does not
+require Python. Open the application and it launches the local studio in the
+default browser. On first launch, **Setup** links to the
+official Fujifilm download and lets the user choose the downloaded GFX ETERNA 55
+ZIP. The ten LUTs are hash-verified and installed locally; they are not bundled or
+redistributed by this project. See [macOS release and Gatekeeper notes](docs/MACOS_RELEASE.md).
+
 ## Features
 
 - Intuitive input-folder browser with familiar locations, breadcrumbs, optional subfolders, and multi-camera RAW support through LibRaw (RAF, DNG, CR3, NEF, ARW, RW2, and others).

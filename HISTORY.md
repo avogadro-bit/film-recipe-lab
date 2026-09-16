@@ -2,6 +2,16 @@
 
 Ces notes décrivent les étapes antérieures ; suivre README.md pour installer la version actuelle.
 
+## 2026-09-16 — Film Recipe Lab 0.2.0 macOS application
+
+- Added a self-contained macOS `.app`, ZIP, and DMG release build.
+- The packaged application opens its authenticated local session automatically;
+  Python and the project virtual environment are no longer required by users.
+- Kept the official LUTs outside the release. First-run Setup downloads from
+  Fujifilm or accepts an existing downloaded ZIP, verifies all ten tables, and
+  installs them in the user data directory.
+- Added startup crash logging under `~/Library/Logs/Film Recipe Lab/app.log`.
+
 ## 2026-09-15 — GUI setup and grain/DR preview revision 11
 
 - Added a first-run GUI setup dialog that downloads the official GFX ETERNA 55

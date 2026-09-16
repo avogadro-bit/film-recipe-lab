@@ -1,0 +1,25 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from fuji_recipe_lab import desktop
+
+
+class DesktopTests(unittest.TestCase):
+    def test_desktop_entry_opens_browser_by_default(self):
+        with patch("fuji_recipe_lab.desktop.serve") as serve:
+            self.assertEqual(desktop.main(["--port", "8877"]), 0)
+        serve.assert_called_once_with([], 8877, open_browser=True)
+
+    def test_desktop_entry_supports_headless_release_check(self):
+        with patch("fuji_recipe_lab.desktop.serve") as serve:
+            self.assertEqual(desktop.main(["--no-browser", "--root", "/tmp/photos"]), 0)
+        serve.assert_called_once_with([Path("/tmp/photos")], 8765, open_browser=False)
+
+    def test_startup_failure_is_logged(self):
+        with tempfile.TemporaryDirectory() as root, \
+             patch("fuji_recipe_lab.desktop.serve", side_effect=RuntimeError("boom")), \
+             patch("fuji_recipe_lab.desktop.log_path", return_value=Path(root) / "app.log"):
+            self.assertEqual(desktop.main(["--no-browser"]), 2)
+            self.assertIn("RuntimeError: boom", (Path(root) / "app.log").read_text())
