@@ -39,7 +39,7 @@ class ExternalToolTests(unittest.TestCase):
             self.assertEqual(run.call_args.args[0][0], '/custom/exiftool')
 
     def test_optics_metadata_and_opcode_use_resolved_binary(self):
-        metadata = {'Make':'LEICA', 'Model':'LEICA Q3 43', 'Software':'1.0', 'PhotometricInterpretation':32803}
+        metadata = {'Make':'LEICA', 'Model':'LEICA M11', 'Software':'1.0', 'PhotometricInterpretation':32803}
         optics._inspect.cache_clear()
         with patch.object(optics, 'find_exiftool', return_value='/custom/exiftool'), \
              patch.object(optics, 'parse_warp', return_value={}), \

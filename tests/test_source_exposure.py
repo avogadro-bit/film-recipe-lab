@@ -8,24 +8,21 @@ from fuji_recipe_lab.studio import decode, _preview_source, _decode_sensor
 
 
 class SourceExposureTests(unittest.TestCase):
-    def test_leica_fixed_input_is_scoped_and_independent_of_preview_style(self):
-        metadata={'Make':'LEICA CAMERA AG','Model':'LEICA Q3 43','BaselineExposure':.25}
+    def test_leica_float_input_uses_dng_baseline_and_preview_estimation(self):
+        metadata={'Make':'LEICA CAMERA AG','Model':'LEICA M11','BaselineExposure':.25}
         profile=source_exposure(metadata,'.DNG')
-        self.assertAlmostEqual(profile['ev'],1.0921820334636739)
-        for other in ({**metadata,'Make':'Apple'}, {**metadata,'Model':'LEICA Q2'}):
-            self.assertNotIn('fixed_camera_exposure',source_exposure(other,'.DNG'))
-        self.assertNotIn('fixed_camera_exposure',source_exposure(metadata,'.RAF'))
-        for style in (0.,1.):
-            _preview_source.cache_clear()
-            a=np.full((3,4,3),.2,np.float32)
-            with patch('fuji_recipe_lab.studio.exif',return_value=metadata), \
-                 patch('fuji_recipe_lab.studio._decode_sensor',return_value=(a,np.full_like(a,style))) as decoder, \
-                 patch('fuji_recipe_lab.studio.estimate_reference_ev') as estimate:
-                pixels,info=_preview_source(Path('leica.DNG'),0,0)
-                estimate.assert_not_called()
-                self.assertTrue(decoder.call_args.kwargs['floating_camera_rgb'])
-                np.testing.assert_allclose(pixels,.2*profile['gain'])
-                self.assertEqual(info['metadata_ev'],.25)
+        self.assertAlmostEqual(profile['ev'],.25)
+        self.assertTrue(profile['floating_camera_rgb'])
+        self.assertNotIn('fixed_camera_exposure',profile)
+        _preview_source.cache_clear();a=np.full((3,4,3),.2,np.float32)
+        with patch('fuji_recipe_lab.studio.exif',return_value=metadata), \
+             patch('fuji_recipe_lab.studio._decode_sensor',return_value=(a,np.full_like(a,.3))) as decoder, \
+             patch('fuji_recipe_lab.studio.estimate_reference_ev',return_value={'reference_ev':.5,'reference_matched':True}) as estimate:
+            pixels,info=_preview_source(Path('leica.DNG'),0,0)
+            estimate.assert_called_once()
+            self.assertTrue(decoder.call_args.kwargs['floating_camera_rgb'])
+            np.testing.assert_allclose(pixels,.2*2**.75)
+            self.assertEqual(info['metadata_ev'],.25)
         _preview_source.cache_clear()
 
     def test_leica_float_matrix_preserves_signed_colours_and_headroom(self):

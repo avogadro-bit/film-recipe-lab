@@ -1,14 +1,19 @@
 """Local photographic studio with an independent RAW renderer."""
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager, nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 import json
 import errno
+import os
 from pathlib import Path
 import secrets
+import sys
 import hashlib
 import tempfile
 import threading
+import time
 import webbrowser
 import zipfile
 from typing import Literal
@@ -19,10 +24,15 @@ import numpy as np
 import rawpy
 
 from .input_profiles import RAW_EXTENSIONS
+from . import __version__
+from .activity import user_activity
+from .platform_support import physical_memory_bytes, drive_roots
+from .diagnostics import record_error, install_hooks, register_secret, context_values
 from .engine import status
 from .lut_install import install_archive
+from .official_luts import FILMS as OFFICIAL_FILMS, lut_worker_count
 from .raw import local_file, exif
-from .studio import StudioRecipe as Recipe, studio_status, decode, render, encode, shooting_settings
+from .studio import StudioRecipe as Recipe, studio_status, decode, render, encode, shooting_settings, source_details
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 
@@ -50,10 +60,60 @@ class BatchExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     items: list[RenderRequest] = Field(min_length=2, max_length=100)
 
+
+class PrefetchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=64)
+
 STATIC = Path(__file__).with_name("static")
 MAX_UPLOAD = 200*1024*1024
 MAX_LUT_ARCHIVE = 160*1024*1024
 MAX_BATCH_REQUEST = 512*1024
+MAX_RECIPE_SIZE = 64*1024
+
+
+def host_capacity(cpu_count=None, physical_memory=None):
+    """Choose conservative image-level concurrency for the current computer.
+
+    A full-resolution RAW can need several GiB while the float pipeline is
+    active.  CPU capacity therefore sets an upper bound, while physical memory
+    decides whether one, two, three, or four full images may run together.
+    Thumbnail extraction is much lighter and can use more I/O concurrency.
+    """
+    cpu_count = max(1, int(cpu_count or os.cpu_count() or 1))
+    if physical_memory is None:
+        physical_memory = physical_memory_bytes()
+    gib = max(1, int(physical_memory)//1024**3)
+    memory_workers = max(1, (gib-4)//6)
+    export_workers = min(4, max(1, cpu_count//3), memory_workers)
+    thumbnail_workers = min(8, max(2, cpu_count//2))
+    return {"cpu_count":cpu_count, "physical_memory":int(physical_memory),
+            "export_workers":export_workers, "thumbnail_workers":thumbnail_workers,
+            "render_workers":lut_worker_count(cpu_count),
+            "full_resolution_prefetch":gib>=16}
+
+
+def export_memory_gib(recipe):
+    """Conservative peak-memory estimate for one full-resolution render."""
+    estimate=6
+    tone=any((recipe.highlights,recipe.whites,recipe.shadows,recipe.blacks)) or recipe.dynamic_range!=100 or recipe.dr_priority!='off'
+    if tone:estimate+=2 if recipe.film in OFFICIAL_FILMS else 1
+    if recipe.clarity:estimate+=1
+    if recipe.grain!='off':estimate+=1
+    if recipe.smooth_skin!='off' or recipe.color_chrome!='off' or recipe.fx_blue!='off':estimate+=1
+    if recipe.lens_distortion!='off' or recipe.lens_vignetting!='off':estimate+=2
+    if recipe.color_space=='adobe_rgb':estimate+=1
+    return estimate
+
+
+def render_context(path):
+    """Optional source-specific safeguards; never make a render depend on metadata."""
+    try:
+        floating=bool(source_details(path).get('floating_camera_rgb'))
+    except Exception as exc:
+        record_error('source-context-fallback', exc)
+        floating=False
+    return {'protect_neutral_clipped_highlights':floating}
 
 
 def output_geometry(shape, recipe):
@@ -88,7 +148,7 @@ def downsample_box(pixels, factor):
 
 
 class Library:
-    def __init__(self, roots, scratch):
+    def __init__(self, roots, scratch, capacity=None):
         self.files = {}
         self.roots = [Path(p).expanduser().resolve() for p in roots] or [Path.home()]
         self.scratch = Path(scratch)
@@ -100,10 +160,21 @@ class Library:
         self.tile_cache = OrderedDict()
         self.tile_generations = OrderedDict()
         self.optics_samples = OrderedDict()
+        self.recipe_folder = None
+        self.recipe_files = {}
+        self.capacity = dict(capacity or host_capacity())
         self.lock = threading.RLock()
-        self.decoder_lock = threading.Semaphore(1)
-        self.full_render_lock = threading.Semaphore(1)
+        # Separate cheap embedded-thumbnail I/O from memory-heavy RAW decode.
+        # Distinct rawpy objects may work concurrently; the limits below keep
+        # high-resolution float buffers inside a conservative memory budget.
+        self.thumbnail_lock = threading.Semaphore(self.capacity["thumbnail_workers"])
+        self.decoder_lock = threading.Semaphore(self.capacity["export_workers"])
+        self.full_decode_lock = threading.Lock()
+        self.full_render_lock = threading.Semaphore(self.capacity["export_workers"])
         self.tile_render_lock = threading.Semaphore(2)
+        self.render_priority = threading.Condition()
+        self.export_jobs = 0
+        self.active_tile_renders = 0
         for root in self.roots:
             if not root.is_dir():
                 raise ValueError(f"Folder not found: {root}")
@@ -129,6 +200,7 @@ class Library:
             ("Pictures", home / "Pictures"),
             ("Documents", home / "Documents"),
             ("Downloads", home / "Downloads"),
+            *[(str(drive), drive) for drive in drive_roots()],
             *[("Start Folder" if root == home else root.name or str(root), root) for root in self.roots],
         ]
         shortcuts, seen = [], set()
@@ -163,6 +235,62 @@ class Library:
             "raw_count": raw_count,
         }
 
+    @staticmethod
+    def _read_recipe(path):
+        with path.open("rb") as stream:
+            payload = stream.read(MAX_RECIPE_SIZE + 1)
+        if len(payload) > MAX_RECIPE_SIZE:
+            raise ValueError("The recipe exceeds 64 KB.")
+        return Recipe.model_validate_json(payload)
+
+    def select_recipe_folder(self, path):
+        """Index valid JSON recipes in one explicitly selected local folder."""
+        folder = Path(path).expanduser().resolve()
+        if not folder.is_dir():
+            raise ValueError("Recipe folder not found.")
+        recipes, indexed, invalid = [], {}, 0
+        for candidate in sorted(folder.iterdir(), key=lambda item: item.name.casefold()):
+            if candidate.name.startswith('.') or candidate.suffix.lower() != '.json' or candidate.is_symlink():
+                continue
+            try:
+                resolved = candidate.resolve(strict=True)
+                if resolved.parent != folder or not resolved.is_file():
+                    raise ValueError("Recipe is outside the selected folder.")
+                parsed = self._read_recipe(resolved)
+                stat = resolved.stat()
+                identifier = hashlib.sha256(
+                    f"{resolved}:{stat.st_size}:{stat.st_mtime_ns}".encode()
+                ).hexdigest()[:24]
+                item = {"id": identifier, "name": parsed.name, "filename": resolved.name,
+                        "film": parsed.film}
+                recipes.append(item)
+                indexed[identifier] = resolved
+            except Exception:
+                invalid += 1
+        with self.lock:
+            self.recipe_folder = folder
+            self.recipe_files = indexed
+        return {"folder": str(folder), "name": folder.name or str(folder),
+                "recipes": recipes, "invalid_count": invalid}
+
+    def load_recipe(self, identifier):
+        if not isinstance(identifier, str) or not identifier:
+            raise ValueError("Choose a recipe.")
+        with self.lock:
+            folder = self.recipe_folder
+            path = self.recipe_files.get(identifier)
+        if folder is None or path is None:
+            raise ValueError("Recipe not found. Refresh the recipe folder.")
+        try:
+            resolved = path.resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise ValueError("Recipe file no longer exists. Refresh the recipe folder.") from exc
+        if resolved.parent != folder or resolved.is_symlink() or not resolved.is_file():
+            raise ValueError("Recipe is no longer inside the selected folder.")
+        recipe = self._read_recipe(resolved)
+        return {"recipe": recipe.model_dump(), "notes": recipe.unsupported(),
+                "render_available": True, "filename": resolved.name}
+
     def select_folder(self, path, recursive=True):
         folder=Path(path).expanduser().resolve()
         if not folder.is_dir():raise ValueError("Folder not found.")
@@ -187,6 +315,41 @@ class Library:
     def listing(self):
         with self.lock:
             return list(self.files.values())
+
+    def performance(self):
+        return dict(self.capacity)
+
+    @contextmanager
+    def export_slot(self):
+        """Give exports priority over source-detail work already in flight."""
+        with self.render_priority:
+            self.export_jobs+=1
+            while self.active_tile_renders:
+                self.render_priority.wait()
+        try:
+            yield
+        finally:
+            with self.render_priority:
+                self.export_jobs-=1
+                self.render_priority.notify_all()
+
+    @contextmanager
+    def tile_slot(self):
+        with self.render_priority:
+            if self.export_jobs:
+                raise ValueError('Source detail paused during export')
+            self.active_tile_renders+=1
+        try:
+            yield
+        finally:
+            with self.render_priority:
+                self.active_tile_renders-=1
+                self.render_priority.notify_all()
+
+    def check_export_priority(self):
+        with self.render_priority:
+            if self.export_jobs:
+                raise ValueError('Source detail paused during export')
 
     def inspect(self, identifier):
         with self.decoder_lock:
@@ -230,24 +393,27 @@ class Library:
             try:
                 info["optics"] = inspect_optics(path)
             except (OSError, ValueError, RuntimeError) as exc:
+                record_error('optics-inspection', exc, context={'photo_id': identifier})
                 info["optics"] = {"distortion":False,"vignetting":False,"label":f"Lens profile unavailable: {exc}"}
             self.details[identifier] = info
             return info
 
     def thumbnail(self, identifier):
         """Return a small embedded RAW preview without running the render pipeline."""
-        with self.decoder_lock:
-            if identifier in self.thumbnails:
-                self.thumbnails.move_to_end(identifier)
-                return self.thumbnails[identifier]
+        with self.thumbnail_lock:
             with self.lock:
+                if identifier in self.thumbnails:
+                    self.thumbnails.move_to_end(identifier)
+                    return self.thumbnails[identifier]
                 item = self.files[identifier]
             path = Path(item["path"])
             if not local_file(path):
                 raise ValueError("This iCloud file must be downloaded before its thumbnail can be shown.")
             try:
-                if identifier in self.previews:
-                    picture = Image.open(BytesIO(self.previews[identifier]))
+                with self.lock:
+                    preview = self.previews.get(identifier)
+                if preview is not None:
+                    picture = Image.open(BytesIO(preview))
                 else:
                     with rawpy.imread(str(path)) as raw:
                         thumb = raw.extract_thumb()
@@ -260,13 +426,17 @@ class Library:
                                             icc_profile=picture.info.get("icc_profile"))
             except (rawpy.LibRawNoThumbnailError, rawpy.LibRawUnsupportedThumbnailError):
                 raise ValueError("This RAW file has no embedded thumbnail.") from None
-            self.thumbnails[identifier] = output.getvalue()
-            while len(self.thumbnails) > 96:
-                self.thumbnails.popitem(last=False)
-            return self.thumbnails[identifier]
+            data = output.getvalue()
+            with self.lock:
+                self.thumbnails[identifier] = data
+                while len(self.thumbnails) > 96:
+                    self.thumbnails.popitem(last=False)
+            return data
 
 
-    def develop(self, request, export=False):
+    def develop(self, request, export=False, timings=None):
+        timings = timings if timings is not None else {}
+        started=time.perf_counter()
         with self.lock:
             item = self.files[request.id]
         path = Path(item["path"])
@@ -274,12 +444,23 @@ class Library:
             raise ValueError("The iCloud file is not downloaded. Open Finder to download it.")
 
         def finish(linear):
+            stage=time.perf_counter()
             if request.recipe.lens_distortion != 'off' or request.recipe.lens_vignetting != 'off':
                 from .optics import inspect_optics, apply_corrections
                 linear=apply_corrections(linear,inspect_optics(path),
                                          request.recipe.lens_distortion,request.recipe.lens_vignetting)
-            pixels = render(linear, request.recipe, neutral=request.neutral)
-            return encode(pixels, request.recipe, preview=not export)
+            timings['optics']=time.perf_counter()-stage
+            stage=time.perf_counter()
+            context=render_context(path)
+            timings['metadata']=time.perf_counter()-stage
+            stage=time.perf_counter()
+            pixels = render(linear, request.recipe, neutral=request.neutral,
+                            context=context)
+            timings['render']=time.perf_counter()-stage
+            stage=time.perf_counter()
+            result=encode(pixels, request.recipe, preview=not export)
+            timings['encode']=time.perf_counter()-stage
+            return result
 
         if not export and request.quality == 'interactive':
             # Serialize only LibRaw access, not the small render. An interactive
@@ -291,18 +472,14 @@ class Library:
         # Full exports remain serialized to bound peak memory. Release the RAW
         # decoder as soon as its result is cached so reduced previews can render
         # concurrently with the expensive full-size effects pipeline.
-        with self.full_render_lock:
-            with self.decoder_lock:
-                if request.id not in self.linear_cache:
-                    # Reuse this full-size development for the stabilized
-                    # preview and export. Keep only the active photo to bound
-                    # the roughly 700 MB float32 working set of a 60 MP RAW.
-                    self.linear_cache[request.id] = decode(path, preview=False)
-                    while len(self.linear_cache) > 1:
-                        self.linear_cache.popitem(last=False)
-                self.linear_cache.move_to_end(request.id)
-                linear = self.linear_cache[request.id]
-            return finish(linear)
+        priority=self.export_slot() if export else nullcontext()
+        with priority:
+            with self.full_render_lock:
+                timings['queue']=time.perf_counter()-started
+                stage=time.perf_counter()
+                linear=self.full_linear(request.id)
+                timings['decode_or_prefetch_wait']=time.perf_counter()-stage
+                return finish(linear)
 
     def full_linear(self, identifier, check_current=lambda:None):
         """Decode once; viewport tiles and export share the active RAW buffer."""
@@ -311,13 +488,22 @@ class Library:
         path=Path(item['path'])
         if not local_file(path):
             raise ValueError("The iCloud file is not downloaded. Open Finder to download it.")
-        with self.decoder_lock:
+        # A counting decoder semaphore does not coalesce simultaneous cache
+        # misses from prefetch, tiles and export. One cache fill owns this lock.
+        with self.full_decode_lock, self.decoder_lock:
             check_current()
             if identifier not in self.linear_cache:
                 self.linear_cache[identifier]=decode(path,preview=False)
                 while len(self.linear_cache)>1:self.linear_cache.popitem(last=False)
             self.linear_cache.move_to_end(identifier)
             return self.linear_cache[identifier]
+
+    def prefetch(self,identifier):
+        """Use idle time and capable Macs to prepare the next full export."""
+        if not self.capacity.get('full_resolution_prefetch',False):return False
+        self.check_export_priority()
+        self.full_linear(identifier,self.check_export_priority)
+        return True
 
     def render_tile(self, request):
         """Render one source-resolution viewport tile, never a giant browser JPEG."""
@@ -330,6 +516,7 @@ class Library:
             with self.lock:
                 if request.view_id and request.generation<self.tile_generations.get(request.view_id,0):
                     raise ValueError('Superseded viewport')
+            self.check_export_priority()
         check_current()
         recipe_key=hashlib.sha256(request.recipe.model_dump_json().encode()).hexdigest()[:20]
         cache_key=(request.id,recipe_key,request.x,request.y,request.size,request.level)
@@ -385,12 +572,14 @@ class Library:
         else:region=linear[ry0:ry1,rx0:rx1]
         context={'sample':sample,
                  'full_shape':((linear.shape[0]+level-1)//level,
-                               (linear.shape[1]+level-1)//level,3)}
+                               (linear.shape[1]+level-1)//level,3),
+                 **render_context(path)}
         region=downsample_box(region,level)
         with self.tile_render_lock:
-            check_current()
-            pixels=render(region,request.recipe,output_transform=False,context=context,
-                          origin=(ry0//level,rx0//level))
+            with self.tile_slot():
+                check_current()
+                pixels=render(region,request.recipe,output_transform=False,context=context,
+                              origin=(ry0//level,rx0//level))
         crop_x0=(sx0-rx0)//level;crop_y0=(sy0-ry0)//level
         crop_x1=(sx1-rx0+level-1)//level;crop_y1=(sy1-ry0+level-1)//level
         pixels=pixels[crop_y0:crop_y1,crop_x0:crop_x1]
@@ -406,8 +595,42 @@ class Library:
             while len(self.tile_cache)>96:self.tile_cache.popitem(last=False)
         return result
 
+    def _develop_batch_item(self, request):
+        """Develop one uncached batch item inside the shared memory budget."""
+        # Batch items do not enter the one-photo cache: retaining several 60 MP
+        # float buffers would erase the memory bound from the worker pool.
+        with self.lock:
+            path = Path(self.files[request.id]["path"])
+        if not local_file(path):
+            raise ValueError("The iCloud file is not downloaded. Open Finder to download it.")
+        with self.export_slot():
+            with self.full_render_lock:
+                with self.lock:
+                    linear=self.linear_cache.get(request.id)
+                    if linear is not None:self.linear_cache.move_to_end(request.id)
+                if linear is None:
+                    with self.decoder_lock:
+                        linear = decode(path, preview=False)
+                if request.recipe.lens_distortion != 'off' or request.recipe.lens_vignetting != 'off':
+                    from .optics import inspect_optics, apply_corrections
+                    linear = apply_corrections(linear, inspect_optics(path),
+                                               request.recipe.lens_distortion,
+                                               request.recipe.lens_vignetting)
+                return encode(render(linear, request.recipe, neutral=request.neutral,
+                                     context=render_context(path)),
+                              request.recipe, preview=False)
+
+    def batch_export_workers(self,requests):
+        """Keep heavy recipes below memory pressure while filling CPU cores."""
+        if not requests:return 1
+        memory_gib=max(1,self.capacity.get("physical_memory",8*1024**3)/1024**3)
+        reserve=4 if memory_gib<=16 else 6
+        per_job=max(export_memory_gib(request.recipe) for request in requests)
+        memory_workers=max(1,int(max(per_job,memory_gib-reserve)//per_job))
+        return min(self.capacity["export_workers"],len(requests),memory_workers)
+
     def export_jpeg_archive(self, requests):
-        """Render each requested photo with its own recipe into a temporary ZIP."""
+        """Render independent photos concurrently, then stream them into a ZIP."""
         identifiers = [request.id for request in requests]
         if len(set(identifiers)) != len(identifiers):
             raise ValueError("Each photo may appear only once in a batch export.")
@@ -420,23 +643,32 @@ class Library:
 
         archive_path = self.scratch/f"film-recipe-lab-{secrets.token_hex(12)}.zip"
         used_names = set()
+        jobs = []
+        for index, request in enumerate(requests, 1):
+            with self.lock:
+                source_name = self.files[request.id]["name"]
+            stem = "".join(character if character.isalnum() or character in "-_ ." else "_"
+                           for character in Path(source_name).stem).strip(" .") or f"photo-{index}"
+            candidate = f"{stem}-{request.recipe.film}.jpg"
+            suffix = 2
+            while candidate.casefold() in used_names:
+                candidate = f"{stem}-{request.recipe.film}-{suffix}.jpg"
+                suffix += 1
+            used_names.add(candidate.casefold())
+            jobs.append((candidate, request))
+
         try:
             with zipfile.ZipFile(archive_path, "x", compression=zipfile.ZIP_STORED) as archive:
-                for index, request in enumerate(requests, 1):
-                    data, mime = self.develop(request, export=True)
-                    if mime != "image/jpeg":
-                        raise ValueError("Batch export produced a non-JPEG image.")
-                    with self.lock:
-                        source_name = self.files[request.id]["name"]
-                    stem = "".join(character if character.isalnum() or character in "-_ ." else "_"
-                                   for character in Path(source_name).stem).strip(" .") or f"photo-{index}"
-                    candidate = f"{stem}-{request.recipe.film}.jpg"
-                    suffix = 2
-                    while candidate.casefold() in used_names:
-                        candidate = f"{stem}-{request.recipe.film}-{suffix}.jpg"
-                        suffix += 1
-                    used_names.add(candidate.casefold())
-                    archive.writestr(candidate, data)
+                workers = self.batch_export_workers(requests)
+                with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="raw-export") as pool:
+                    futures = {pool.submit(self._develop_batch_item, request): candidate
+                               for candidate, request in jobs}
+                    for future in as_completed(futures):
+                        candidate = futures[future]
+                        data, mime = future.result()
+                        if mime != "image/jpeg":
+                            raise ValueError("Batch export produced a non-JPEG image.")
+                        archive.writestr(candidate, data)
         except Exception:
             archive_path.unlink(missing_ok=True)
             raise
@@ -444,15 +676,48 @@ class Library:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def log_error(self, format, *args):
+        record_error('http-protocol', message=format % args)
+
+    def diagnostic_context(self):
+        context = {'source': self.command, 'request_id': self.headers.get('X-Film-Request-ID', '')[:64]}
+        request = getattr(self, 'diagnostic_request', None)
+        if request is not None:
+            for name in ('x', 'y', 'size', 'level', 'generation'):
+                if hasattr(request, name): context[name] = getattr(request, name)
+            if hasattr(request, 'id'): context['photo_id'] = request.id
+            if hasattr(request, 'recipe'):
+                context.update(film=request.recipe.film, grain=request.recipe.grain,
+                               grain_size=request.recipe.grain_size,
+                               recipe_hash=hashlib.sha256(request.recipe.model_dump_json().encode()).hexdigest()[:16])
+        else:
+            route = urlparse(self.path).path
+            if route.startswith(('/api/photo/', '/api/thumbnail/', '/api/preview/')):
+                context['photo_id'] = route.rsplit('/', 1)[-1]
+        return context
+
+    def failure(self, exc, code=422):
+        event = record_error(urlparse(self.path).path.strip('/').replace('/', '.'), exc,
+                             context={**self.diagnostic_context(), 'status': code})
+        self.send(code, {'error': str(exc), 'error_id': event, 'diagnostic_recorded': True})
+
     def log_message(self, *_):
         pass  # No file paths, session tokens or recipe contents in HTTP logs.
 
     def send(self, code, data, content_type="application/json; charset=utf-8"):
+        if code >= 400 and isinstance(data, dict) and not data.get('diagnostic_recorded'):
+            event = record_error(urlparse(self.path).path.strip('/').replace('/', '.'),
+                                 message=data.get('error', 'HTTP error'),
+                                 context={**self.diagnostic_context(), 'status': code})
+            data = {**data, 'error_id': event}
         if not isinstance(data, bytes):
             data = json.dumps(data, ensure_ascii=False, allow_nan=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        if getattr(self,'export_timings',None):
+            self.send_header('Server-Timing',', '.join(
+                f'{key};dur={value*1000:.2f}' for key,value in self.export_timings.items()))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'")
@@ -491,7 +756,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         route = urlparse(self.path).path
         static = {"/": ("index.html", "text/html; charset=utf-8"),
-                  "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8")}
+                  "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                  "/diagnostics.js": ("diagnostics.js", "text/javascript; charset=utf-8"),
+                  "/kora.css": ("kora.css", "text/css; charset=utf-8"),
+                  "/style.css": ("style.css", "text/css; charset=utf-8")}
         if route in static:
             filename, mime = static[route]
             return self.send(200, (STATIC/filename).read_bytes(), mime)
@@ -503,7 +771,10 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/health":
                 return self.send(200, {"ready": True})
             if route == "/api/library":
-                return self.send(200, {"files": self.server.library.listing(), "engine": studio_status(), "native_engine": status(), "recipe": Recipe().model_dump()})
+                return self.send(200, {"version":__version__, "files": self.server.library.listing(), "engine": studio_status(),
+                                      "native_engine": status(), "recipe": Recipe().model_dump(),
+                                      "native_window": callable(getattr(self.server, "toggle_fullscreen", None)),
+                                      "performance": self.server.library.performance()})
             if route.startswith("/api/photo/"):
                 return self.send(200, self.server.library.inspect(route.split("/")[-1]))
             if route.startswith("/api/preview/"):
@@ -514,12 +785,17 @@ class Handler(BaseHTTPRequestHandler):
                 identifier = route.split("/")[-1]
                 return self.send(200, self.server.library.thumbnail(identifier), "image/jpeg")
             self.send(404, {"error": "Resource not found"})
-        except KeyError:
-            self.send(404, {"error": "Photo or preview not found"})
+        except KeyError as exc:
+            self.failure(exc, 404)
         except Exception as exc:
-            self.send(422, {"error": str(exc)})
+            self.failure(exc)
 
     def do_POST(self):
+        route=urlparse(self.path).path
+        with user_activity() if route in {'/api/export','/api/export-batch','/api/render','/api/tile','/api/prefetch'} else nullcontext():
+            self.handle_post()
+
+    def handle_post(self):
         if not self.authorized():
             return
         route = urlparse(self.path)
@@ -580,20 +856,74 @@ class Handler(BaseHTTPRequestHandler):
                 engine = studio_status()
                 return self.send(201, {"installed": not engine["missing_luts"], "engine": engine})
             body = self.rfile.read(length)
+            if route.path == '/api/diagnostics':
+                if length > 16384:
+                    return self.send(413, {'error': 'Diagnostic event too large'})
+                value = json.loads(body)
+                if not isinstance(value, dict) or not isinstance(value.get('message'), str):
+                    raise ValueError('Invalid diagnostic event')
+                context = value.get('context', {})
+                if not isinstance(context, dict): raise ValueError('Invalid diagnostic context')
+                # The authenticated client is still bounded in case of an error loop.
+                now = time.monotonic()
+                with self.server.library.lock:
+                    recent = [t for t in getattr(self.server, 'diagnostic_events', []) if now-t < 60]
+                    allowed = len(recent) < 120
+                    if allowed: recent.append(now)
+                    self.server.diagnostic_events = recent
+                if not allowed:
+                    return self.send(429, {'error': 'Diagnostic rate limit', 'diagnostic_recorded': True})
+                event = record_error('client.' + str(value.get('operation', 'error'))[:80],
+                                     message=value['message'][:4000],
+                                     stack=str(value.get('stack', ''))[:8000],
+                                     context=context_values(context))
+                return self.send(200 if event else 503, {'id': event, 'recorded': bool(event)})
+            if route.path == "/api/window/fullscreen":
+                toggle = getattr(self.server, "toggle_fullscreen", None)
+                if not callable(toggle):
+                    return self.send(409, {"error": "No native window in browser mode."})
+                toggle()
+                return self.send(200, {"ok": True})
             if route.path == "/api/folder":
                 value=json.loads(body)
                 if not isinstance(value,dict) or not isinstance(value.get("path"),str) or not value["path"].strip() or not isinstance(value.get("recursive",True),bool):
                     raise ValueError("Invalid folder selection.")
                 return self.send(200,self.server.library.select_folder(value["path"],value.get("recursive",True)))
+            if route.path == "/api/recipes/folder":
+                value=json.loads(body)
+                if not isinstance(value,dict) or not isinstance(value.get("path"),str) or not value["path"].strip():
+                    raise ValueError("Invalid recipe folder selection.")
+                return self.send(200,self.server.library.select_recipe_folder(value["path"]))
+            if route.path == "/api/recipes/load":
+                value=json.loads(body)
+                if not isinstance(value,dict) or not isinstance(value.get("id"),str):
+                    raise ValueError("Invalid recipe selection.")
+                return self.send(200,self.server.library.load_recipe(value["id"]))
             if route.path == "/api/recipe":
                 recipe = Recipe.model_validate_json(body)
                 return self.send(200, {"recipe": recipe.model_dump(), "notes": recipe.unsupported(), "render_available": True})
+            if route.path == "/api/prefetch":
+                request=PrefetchRequest.model_validate_json(body)
+                self.diagnostic_request = request
+                return self.send(200,{"ready":self.server.library.prefetch(request.id)})
             if route.path == "/api/tile":
                 request = TileRequest.model_validate_json(body)
+                self.diagnostic_request = request
                 data,mime = self.server.library.render_tile(request)
                 return self.send(200,data,mime)
             if route.path in {"/api/render", "/api/export"}:
                 request = RenderRequest.model_validate_json(body)
+                self.diagnostic_request = request
+                if route.path == "/api/export":
+                    self.connection.settimeout(3600)
+                    started=time.perf_counter();timings={}
+                    data,mime=self.server.library.develop(request,export=True,timings=timings)
+                    timings['server']=time.perf_counter()-started
+                    self.export_timings=timings
+                    self.send(200,data,mime)
+                    timings['response_write']=time.perf_counter()-started-timings['server']
+                    self.record_export(timings,len(data))
+                    return
                 data, mime = self.server.library.develop(request, export=route.path == "/api/export")
                 return self.send(200, data, mime)
             if route.path == "/api/export-batch":
@@ -606,26 +936,46 @@ class Handler(BaseHTTPRequestHandler):
                     archive.unlink(missing_ok=True)
             self.send(404, {"error": "Command not found"})
         except Exception as exc:
-            self.send(422, {"error": str(exc)})
+            self.failure(exc)
+
+    def record_export(self,timings,size):
+        # Local diagnostics contain no photo paths, image pixels or session keys.
+        from .desktop import log_path
+        try:
+            path=log_path().with_name('exports.jsonl');path.parent.mkdir(parents=True,exist_ok=True)
+            if path.exists() and path.stat().st_size>1024*1024:
+                path.replace(path.with_suffix('.previous.jsonl'))
+            with path.open('a',encoding='utf-8') as stream:
+                stream.write(json.dumps({'version':__version__,'time':time.time(),
+                    'seconds':timings,'bytes':size})+'\n')
+        except OSError:
+            pass
+
+
+class StudioHTTPServer(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        record_error('http-worker', sys.exc_info()[1])
 
 
 def bind_studio_server(port):
     try:
-        return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        return StudioHTTPServer(("127.0.0.1", port), Handler)
     except OSError as exc:
         if exc.errno != errno.EADDRINUSE:
             raise
         # Let the OS select and reserve a free port atomically.
-        return ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        return StudioHTTPServer(("127.0.0.1", 0), Handler)
 
 
 def serve(roots, port=8765, open_browser=False, on_ready=None):
+    install_hooks()
     if not 1024 <= port <= 65535:
         raise ValueError("Port must be between 1024 and 65535")
     with tempfile.TemporaryDirectory(prefix="film-recipe-lab-") as scratch:
         server = bind_studio_server(port)
         server.daemon_threads = True
         server.session_token = secrets.token_urlsafe(32)
+        register_secret(server.session_token)
         server.library = Library(roots, scratch)
         session_url = f"http://127.0.0.1:{server.server_port}/#session={server.session_token}"
         if server.server_port != port:

@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 import numpy as np
 from scipy.ndimage import uniform_filter
-from fuji_recipe_lab.recipe_effects import wb_shift_gains, chrome_effect, dynamic_range_compress, tone_curve, linear_tone_curve, selective_tone_detail
+from fuji_recipe_lab.recipe_effects import wb_shift_gains, chrome_effect, dynamic_range_compress, tone_curve, linear_tone_curve, selective_tone_detail, protect_unrecoverable_highlights
 from fuji_recipe_lab.studio import render, StudioRecipe
 
 
@@ -132,7 +132,7 @@ class RecipeEffectTests(unittest.TestCase):
         self.assertTrue(np.all(np.diff(recovered,axis=1)>0))
         self.assertTrue(np.all(recovered<1))
 
-    def test_selective_recovery_restores_existing_local_detail_without_inventing_it(self):
+    def test_tone_detail_preserves_cloud_gradients_and_restores_shadow_texture(self):
         y,x=np.mgrid[:320,:480]
         cloud=.75+.18*np.sin(x/13)*np.sin(y/17)
         cloud+=.12*np.exp(-((x-250)**2+(y-130)**2)/(2*85**2))
@@ -140,8 +140,11 @@ class RecipeEffectTests(unittest.TestCase):
         compressed=linear_tone_curve(source,highlights=-100)
         recovered=selective_tone_detail(source,compressed,highlights=-100)
         highpass=lambda a:a[:,:,0]-uniform_filter(a[:,:,0],size=31,mode='reflect')
-        self.assertGreater(float(highpass(recovered).std()),
-                           1.08*float(highpass(compressed).std()))
+        # Highlight reduction must not acquire local white rims/dark lobes.
+        np.testing.assert_array_equal(recovered,compressed)
+        np.testing.assert_array_equal(
+            selective_tone_detail(source,compressed,highlights=-100,shadows=100,blacks=100),
+            compressed)
         flat=np.full((160,240,3),.8,np.float32)
         flat_compressed=linear_tone_curve(flat,highlights=-100)
         np.testing.assert_allclose(selective_tone_detail(flat,flat_compressed,highlights=-100),
@@ -152,6 +155,27 @@ class RecipeEffectTests(unittest.TestCase):
         self.assertGreater(float(highpass(shadow_recovered).std()),
                            1.05*float(highpass(lifted).std()))
         self.assertTrue(np.isfinite(recovered).all())
+
+    def test_dng_shoulder_has_no_neutrality_boundary_or_tonal_reversal(self):
+        from fuji_recipe_lab.recipe_effects import _unrecoverable_highlight_weight
+        luminance=np.linspace(.1,3,1000,dtype=np.float32)
+        source=np.repeat(luminance[None,:,None],3,-1)
+        weight=_unrecoverable_highlight_weight(source)
+        self.assertTrue(np.all(np.diff(weight[0])>=-1e-6))
+        tinted=source.copy();tinted[...,0]+=.2;tinted[...,2]-=.2*.2126/.0722
+        np.testing.assert_allclose(_unrecoverable_highlight_weight(tinted),weight,atol=1e-6)
+        adjusted=linear_tone_curve(source,highlights=-100)
+        result=protect_unrecoverable_highlights(adjusted,np.clip(source,0,1),source)
+        self.assertTrue(np.all(np.diff(result[0,:,0])>=-1e-6))
+
+    def test_neutral_highlight_protection_is_opt_in_for_floating_dng_context(self):
+        source=np.full((24,32,3),2,np.float32)
+        recipe=StudioRecipe(highlights=-100,noise_reduction=-4)
+        with patch('fuji_recipe_lab.studio.apply_official',side_effect=lambda a,film:np.clip(a,0,1)):
+            ordinary=render(source,recipe)
+            protected=render(source,recipe,context={'protect_neutral_clipped_highlights':True})
+        self.assertTrue(np.all(ordinary<1))
+        np.testing.assert_array_equal(protected,1)
 
     @unittest.skipIf(missing_luts(), "Official LUT integration: install Fuji assets separately")
     def test_tone_adjustments_keep_official_film_hue_and_raw_luminance(self):

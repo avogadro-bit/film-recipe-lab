@@ -4,11 +4,14 @@ F-Log2 formula and F-Gamut primaries: Fujifilm data sheet v1.1.
 Output viewing: Rec.709 / D65 / gamma 2.2, per GFX ETERNA 55 White Paper
 v1.01 page 13, converted to sRGB for browser/ICC exports. Not a photo ISP.
 """
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 import hashlib
 import json
 import os
+import sys
+from .platform_support import windows_data_directory
 import numpy as np
 from scipy.ndimage import map_coordinates
 
@@ -19,7 +22,8 @@ LUT_DISPLAY_GAMMA = 2.2
 
 
 def user_lut_directory():
-    return Path(os.environ.get('FUJI_RECIPE_LUT_DIR', Path.home()/'.local/share/fuji-recipe-lab/luts')).expanduser()
+    default = windows_data_directory() / 'luts' if sys.platform == 'win32' else Path.home()/'.local/share/fuji-recipe-lab/luts'
+    return Path(os.environ.get('FUJI_RECIPE_LUT_DIR', default)).expanduser()
 
 
 def lut_path(film):
@@ -72,14 +76,46 @@ def interpolate(table,rgb):
                      mode='nearest',prefilter=False) for c in range(3)],axis=-1)
 
 
-def apply_official(linear_srgb,film):
+def lut_worker_count(cpu_count=None):
+    """Use several performance cores without oversubscribing image batches."""
+    cpu_count=max(1,int(cpu_count or os.cpu_count() or 1))
+    return min(10,max(1,(cpu_count*3+3)//4))
+
+
+@lru_cache(maxsize=4)
+def render_executor(workers):
+    # One shared pool caps total pixel concurrency even when several photographs
+    # are exported at once. NumPy and scipy release the GIL for these kernels,
+    # so threads execute concurrently without copying full RAW buffers.
+    return ThreadPoolExecutor(max_workers=workers,thread_name_prefix='pixel-render')
+
+
+def run_parallel_rows(length,callback,workers=None,block_rows=128,min_rows=512):
+    """Run independent row blocks through the shared renderer worker pool."""
+    blocks=[(start,min(start+block_rows,length)) for start in range(0,length,block_rows)]
+    workers=lut_worker_count() if workers is None else max(1,int(workers))
+    if workers==1 or length<min_rows:
+        for start,stop in blocks:callback(start,stop)
+        return
+    futures=[render_executor(workers).submit(callback,start,stop) for start,stop in blocks]
+    for future in futures:future.result()
+
+
+def _apply_official_rows(source,result,table,start,stop):
+    linear=np.einsum('...i,ij->...j',source[start:stop],TO_F_GAMUT)
+    video=interpolate(table,flog2_encode(linear))
+    display=np.maximum(video,0)**LUT_DISPLAY_GAMMA
+    result[start:stop]=np.where(display<=.0031308,display*12.92,
+                                1.055*display**(1/2.4)-.055)
+
+
+def apply_official(linear_srgb,film,workers=None):
     table=load_lut(film)
     result=np.empty_like(linear_srgb,dtype=np.float32)
-    # Bound temporary memory on full-resolution RAW exports.
-    for start in range(0,len(result),128):
-        linear=np.einsum('...i,ij->...j',linear_srgb[start:start+128],TO_F_GAMUT)
-        video=interpolate(table,flog2_encode(linear))
-        display=np.maximum(video,0)**LUT_DISPLAY_GAMMA
-        result[start:start+128]=np.where(display<=.0031308,display*12.92,
-                                         1.055*display**(1/2.4)-.055)
-    return np.clip(result,0,1)
+    # Keep row blocks small to bound temporary memory. Large renders share a
+    # process-wide pool; independent exports therefore consume all available
+    # cores without each creating an unbounded set of worker threads.
+    run_parallel_rows(len(result),lambda start,stop:
+        _apply_official_rows(linear_srgb,result,table,start,stop),workers)
+    np.clip(result,0,1,out=result)
+    return result

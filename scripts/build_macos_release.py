@@ -46,6 +46,8 @@ def main():
     for path in (work, app_dist, release, staging):
         reset_directory(path)
 
+    run("swift", ROOT / "scripts" / "build_app_icon.swift", ROOT)
+    run("iconutil", "-c", "icns", ROOT / "build" / "AppIcon.iconset", "-o", ROOT / "build" / "AppIcon.icns")
     run(
         sys.executable,
         "-m",
@@ -59,7 +61,7 @@ def main():
         ROOT / "packaging" / "FilmRecipeLab.spec",
     )
 
-    app = app_dist / "Film Recipe Lab.app"
+    app = app_dist / "KŌRA.app"
     if not app.is_dir():
         raise SystemExit(f"Application bundle was not produced: {app}")
     # Ad-hoc signing catches altered nested binaries and avoids an entirely
@@ -67,18 +69,20 @@ def main():
     run("codesign", "--force", "--deep", "--sign", "-", app)
     run("codesign", "--verify", "--deep", "--strict", app)
 
-    base = f"Film-Recipe-Lab-{VERSION}-macOS-{architecture}"
+    base = f"Kora-{VERSION}-macOS-{architecture}"
     archive = release / f"{base}.zip"
     image = release / f"{base}.dmg"
     run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, archive)
 
     run("ditto", app, staging / app.name)
     (staging / "Applications").symlink_to("/Applications")
+    shutil.copyfile(ROOT / "build" / "AppIcon.icns", staging / ".VolumeIcon.icns")
+    run("SetFile", "-a", "C", staging)
     run(
         "hdiutil",
         "create",
         "-volname",
-        "Film Recipe Lab",
+        "KŌRA",
         "-srcfolder",
         staging,
         "-ov",

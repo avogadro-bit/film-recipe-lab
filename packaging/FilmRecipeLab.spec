@@ -18,13 +18,14 @@ notices = project_root / "build" / "release-notices"
 if not (notices / "inventory.json").is_file():
     raise RuntimeError("Run scripts/prepare_release_notices.py before packaging")
 datas.append((str(notices), "Third-Party-Notices"))
+datas += collect_data_files("webview")
 
 a = Analysis(
     [str(project_root / "fuji_recipe_lab" / "desktop.py")],
     pathex=[str(project_root)],
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=["webview.platforms.cocoa"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -39,7 +40,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="Film Recipe Lab",
+    name="Kora",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -56,17 +57,17 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="Film Recipe Lab",
+    name="Kora",
 )
 app = BUNDLE(
     coll,
-    name="Film Recipe Lab.app",
-    icon=None,
+    name="KŌRA.app",
+    icon=str(project_root / "build" / "AppIcon.icns"),
     bundle_identifier="com.avogadrobit.film-recipe-lab",
     version=__version__,
     info_plist={
-        "CFBundleDisplayName": "Film Recipe Lab",
-        "CFBundleName": "Film Recipe Lab",
+        "CFBundleDisplayName": "KŌRA",
+        "CFBundleName": "KŌRA",
         "CFBundleShortVersionString": __version__,
         "CFBundleVersion": __version__,
         "LSMinimumSystemVersion": "14.0",

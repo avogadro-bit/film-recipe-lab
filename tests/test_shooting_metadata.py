@@ -16,12 +16,12 @@ class ShootingMetadataTests(unittest.TestCase):
             path = Path(directory) / 'camera.dng'
             tifffile.imwrite(path, np.zeros((8, 8), dtype=np.uint16),
                 extratags=[(271, 's', 0, 'LEICA CAMERA AG', False),
-                           (272, 's', 0, 'LEICA Q3 43', False),
+                           (272, 's', 0, 'LEICA M11', False),
                            (50730, '2i', 1, (-1, 2), False)])
             with patch('fuji_recipe_lab.raw.find_exiftool', return_value=None):
                 metadata = exif(path)
             self.assertEqual(metadata['BaselineExposure'], -.5)
-            self.assertEqual(metadata['Model'], 'LEICA Q3 43')
+            self.assertEqual(metadata['Model'], 'LEICA M11')
             self.assertTrue(source_exposure(metadata, '.dng')['floating_camera_rgb'])
 
     def test_makernotes_win_over_lossy_standard_exif_in_either_order(self):

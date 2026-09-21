@@ -12,6 +12,7 @@ import struct
 import subprocess
 import numpy as np
 from scipy.ndimage import map_coordinates
+from .official_luts import run_parallel_rows
 from .raw import require_local
 from .external_tools import find_exiftool
 
@@ -48,14 +49,15 @@ def warp_coordinates(width,height,start,rows,warp,scale=1.):
 
 def remap(linear,coordinates):
     result=np.empty_like(linear)
-    for start in range(0,len(linear),128):
-        rows=min(128,len(linear)-start)
+    def process(start,stop):
+        rows=stop-start
         xy=coordinates(start,rows)
         if xy.shape!=(rows,linear.shape[1],2) or not np.isfinite(xy).all():
             raise ValueError('Invalid lens correction map')
         coords=np.moveaxis(xy[...,::-1],-1,0)
         for c in range(3):
-            result[start:start+rows,:,c]=map_coordinates(linear[...,c],coords,order=1,mode='nearest',prefilter=False)
+            result[start:stop,:,c]=map_coordinates(linear[...,c],coords,order=1,mode='nearest',prefilter=False)
+    run_parallel_rows(len(linear),process)
     return result
 
 
@@ -148,9 +150,7 @@ def _inspect(path,mtime,size):
         # Conservative: only native, mosaiced Leica files with understood stage3
         # geometry. Linear/computational or externally converted DNGs can
         # already be warped; no Lensfun fallback on these files.
-        model=str(metadata.get('Model','')).strip().upper()
-        native=(model in ('LEICA Q2','LEICA Q3 43') and
-                str(metadata.get('Make','')).upper().startswith('LEICA') and
+        native=(str(metadata.get('Make','')).upper().startswith('LEICA') and
                 metadata.get('PhotometricInterpretation')==32803 and
                 str(metadata.get('Software',''))[:1].isdigit())
         if not native:return {**base,'label':'Transformed or unvalidated DNG: automatic correction disabled'}

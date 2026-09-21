@@ -23,18 +23,9 @@ def source_exposure(metadata, suffix):
         if math.isfinite(value) and -10 <= value <= 10:
             ev = value
             basis = 'Exposition de base DNG'
-        # Fixed camera input offset from 20 Standard Q3 43 previews, checked
-        # on 10 images in withheld folders. Brightness adaptation only: not a
-        # Fuji colour calibration. No per-image JPEG tone/style matching.
         profile=camera_profile(metadata)
         if profile is not None:
-            # Recomputed with signed float decode and Fuji's gamma-2.2
-            # viewing recommendation; see CLASSIC_NEGATIVE_LEICA_V9.md.
-            offset=profile.exposure_offset_ev
-            return {'ev':ev+offset,'basis':'Leica Q3 43 input: DNG baseline + fixed normalization',
-                    'gain':2**(ev+offset),'baseline_ev':ev,'camera_offset_ev':offset,
-                    'input_profile':profile.key,'fixed_camera_exposure':True,
-                    'floating_camera_rgb':profile.floating_camera_rgb,'calibrated_fuji_color':False}
+            basis = 'Leica DNG baseline exposure'
     elif suffix.lower() == '.raf':
         try:
             dr = int(metadata.get('DevelopmentDynamicRange', 100))
@@ -43,7 +34,12 @@ def source_exposure(metadata, suffix):
         if dr in (100, 200, 400):
             ev = math.log2(dr / 100)
             basis = f'Compensation de prise de vue Fuji DR{dr}'
-    return {'ev': ev, 'basis': basis, 'gain': 2**ev}
+    result={'ev': ev, 'basis': basis, 'gain': 2**ev}
+    if suffix.lower()=='.dng' and (profile:=camera_profile(metadata)) is not None:
+        result.update({'baseline_ev':ev,'input_profile':profile.key,
+                       'floating_camera_rgb':profile.floating_camera_rgb,
+                       'calibrated_fuji_color':False})
+    return result
 
 
 def estimate_reference_ev(linear, reference, develop):

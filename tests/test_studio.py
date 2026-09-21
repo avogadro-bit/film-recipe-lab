@@ -6,7 +6,8 @@ import numpy as np
 from PIL import Image, ImageCms
 import tifffile
 from pydantic import ValidationError
-from fuji_recipe_lab.studio import StudioRecipe, render, encode, srgb_decode
+from fuji_recipe_lab.studio import StudioRecipe, render, encode, srgb_decode, large_radius_blur, film_grain, _coordinate_noise, _grain_deviation
+from scipy.ndimage import gaussian_filter
 
 @unittest.skipIf(missing_luts(), 'Official LUT integration: install Fuji assets separately')
 class StudioTests(unittest.TestCase):
@@ -44,6 +45,26 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(Image.open(BytesIO(data)).size,(self.a.shape[1],self.a.shape[0]))
         self.assertEqual(mime,'image/jpeg')
 
+    def test_large_radius_blur_preserves_shape_dtype_and_constant_color(self):
+        flat=np.empty((128,192,3),np.float32);flat[:]=[.1,.4,.8]
+        result=large_radius_blur(flat,36)
+        self.assertEqual((result.shape,result.dtype),(flat.shape,np.dtype(np.float32)))
+        np.testing.assert_allclose(result,flat,atol=1e-6)
+
+    def test_heavy_profile_parallel_rows_are_pixel_identical(self):
+        from unittest.mock import patch
+        source=np.random.default_rng(92).uniform(-.1,2,(512,64,3)).astype(np.float32)
+        recipe=StudioRecipe(film='classic_chrome',wb_red=4,wb_blue=3,
+            highlights=10,shadows=11,blacks=10,color=1,clarity=2,grain='weak',
+            color_chrome='strong',fx_blue='weak')
+        def serial(length,callback,workers=None,block_rows=128,min_rows=512):
+            for start in range(0,length,block_rows):callback(start,min(start+block_rows,length))
+        with patch('fuji_recipe_lab.official_luts.run_parallel_rows',side_effect=serial), \
+             patch('fuji_recipe_lab.recipe_effects.run_parallel_rows',side_effect=serial), \
+             patch('fuji_recipe_lab.studio.run_parallel_rows',side_effect=serial):
+            expected=render(source,recipe)
+        np.testing.assert_array_equal(render(source,recipe),expected)
+
     def test_tile_context_matches_the_same_region_of_a_full_render(self):
         recipe=StudioRecipe(noise_reduction=-4,grain='off')
         full=render(self.a,recipe)
@@ -77,6 +98,16 @@ class StudioTests(unittest.TestCase):
         np.testing.assert_allclose((render(flat,StudioRecipe(film='pro_neg_hi',noise_reduction=-4,
                                                              grain='strong',grain_size='large'))),
                                    base+residuals['strong','large'][...,None])
+
+    def test_banded_grain_matches_full_frame_reference_exactly(self):
+        shape=(620,96);scale=2.34567
+        noise=_coordinate_noise(shape)
+        for size in ('small','large'):
+            fine,coarse=((.35*scale,1.2*scale) if size=='large' else (.2*scale,.8*scale))
+            fine_field=noise if fine<.3 else gaussian_filter(noise,fine,mode='reflect')
+            expected=(fine_field-gaussian_filter(noise,max(.35,coarse),mode='reflect'))
+            expected/=_grain_deviation(size,round(scale,4))
+            np.testing.assert_array_equal(film_grain(shape,size,scale),expected)
 
     def test_export_sixteen_bit_preserves_precision_and_profile(self):
         a=render(self.a,self.r)

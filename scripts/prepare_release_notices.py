@@ -18,7 +18,10 @@ DEST = ROOT / 'build' / 'release-notices'
 SOURCES = ROOT / 'build' / 'dependency-sources'
 PACKAGES = ('rawpy', 'lensfunpy', 'numpy', 'scipy', 'pillow', 'pydantic',
             'pydantic_core', 'tifffile', 'typing_extensions', 'typing-inspection',
-            'annotated-types', 'packaging', 'pyobjc-core', 'pyobjc-framework-Cocoa')
+            'annotated-types', 'packaging', 'pyobjc-core', 'pyobjc-framework-Cocoa',
+            'pywebview', 'bottle', 'proxy_tools', 'pyobjc-framework-Quartz',
+            'pyobjc-framework-WebKit', 'pyobjc-framework-security',
+            'pyobjc-framework-UniformTypeIdentifiers')
 ARCHIVES = {
     'rawpy-0.27.1': 'https://codeload.github.com/letmaik/rawpy/tar.gz/refs/tags/v0.27.1',
     'LibRaw-b860248': 'https://codeload.github.com/LibRaw/LibRaw/tar.gz/b860248a89d9082b8e0a1e202e516f46af9adb29',
@@ -66,7 +69,10 @@ def main():
     DEST.mkdir(parents=True, exist_ok=True)
     SOURCES.mkdir(parents=True, exist_ok=True)
     packages = []
-    for name in PACKAGES:
+    package_names = PACKAGES
+    if sys.platform == 'win32':
+        package_names = tuple(name for name in PACKAGES if not name.startswith('pyobjc-')) + ('pythonnet', 'clr_loader', 'cffi', 'pycparser')
+    for name in package_names:
         dist = distribution(name)
         copied = []
         package_dir = DEST / 'python-packages' / name
@@ -79,24 +85,33 @@ def main():
                 shutil.copyfile(dist.locate_file(entry), target)
                 copied.append(str(target.relative_to(DEST)))
         # The core wheel declares MIT but omits the actual license file.
-        if not copied and name == 'pyobjc-core':
+        if not copied and name.startswith('pyobjc-'):
             target = package_dir / 'License.txt'
             target.parent.mkdir(parents=True, exist_ok=True)
-            url = f'https://raw.githubusercontent.com/ronaldoussoren/pyobjc/v{dist.version}/pyobjc-core/License.txt'
+            source_name = 'pyobjc-framework-Security' if name.endswith('security') else name
+            url = f'https://raw.githubusercontent.com/ronaldoussoren/pyobjc/v{dist.version}/{source_name}/License.txt'
             subprocess.run(['curl', '-fL', '--retry', '2', '--silent', '--show-error', url, '-o', str(target)], check=True)
+            copied.append(str(target.relative_to(DEST)))
+        if not copied and name == 'proxy_tools':
+            target = package_dir / 'LICENSE'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(['curl', '-fL', '--retry', '2', '--silent', '--show-error',
+                            'https://raw.githubusercontent.com/jtushman/proxy_tools/master/LICENSE.txt',
+                            '-o', str(target)], check=True)
             copied.append(str(target.relative_to(DEST)))
         if not copied:
             raise RuntimeError(f'No installed license found: {name}')
         packages.append({'name': name, 'version': dist.version, 'licenses': copied,
                          'upstream': dist.metadata.get_all('Project-URL') or [dist.metadata.get('Home-page', '')]})
     # These native libraries come from the release interpreter's Homebrew build.
-    for name, source in {
+    runtime_licenses = {
         'Python': Path(sys.base_prefix).parents[3] / 'LICENSE',
         'OpenSSL': Path('/opt/homebrew/opt/openssl@3/LICENSE.txt'),
         'zstd': Path('/opt/homebrew/opt/zstd/LICENSE'),
         'mpdecimal': Path('/opt/homebrew/opt/mpdecimal/COPYRIGHT.txt'),
-    }.items():
-        if name == 'Python':
+    } if sys.platform == 'darwin' else {'Python': Path(sys.base_prefix) / 'LICENSE.txt'}
+    for name, source in runtime_licenses.items():
+        if name == 'Python' and sys.platform == 'darwin':
             source = Path('/opt/homebrew/Cellar/python@3.14/3.14.6/LICENSE')
         target = DEST / 'runtime' / name / source.name
         target.parent.mkdir(parents=True, exist_ok=True)

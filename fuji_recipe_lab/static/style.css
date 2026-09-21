@@ -3,6 +3,7 @@
 
 .wb-grid-wrap{margin:18px 0 10px}.wb-grid-title{font-size:10px;letter-spacing:.7px;margin-bottom:7px}.wb-grid-wrap small{display:block;color:var(--muted);font-size:10px;line-height:1.5}.wb-grid-wrap canvas{display:block;width:100%;height:auto;aspect-ratio:1;margin:9px 0;border:1px solid #454d48;border-radius:5px;cursor:crosshair;touch-action:none}.wb-grid-wrap canvas:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.wb-grid-footer{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.wb-grid-footer output{font-variant-numeric:tabular-nums;white-space:pre;font-size:12px}.wb-grid-footer button{font-size:10px;padding:6px 9px}
 /* Photo workspace: panels remain independently available at every width. */
+.recipe-library{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:5px;margin:8px 0 7px}.recipe-library select{width:100%;font-size:10px;padding:9px 7px}.recipe-library button{font-size:10px;padding:9px 7px}.recipe-library+.recipe-actions{margin-top:0}
 body{height:100dvh;overflow:hidden}.view-toolbar{height:42px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid var(--line);background:#1c1f1d}.view-toolbar button{font-size:11px;padding:6px 10px}.view-toolbar button[aria-pressed=true]{background:#37412f;border-color:#667554}.view-toolbar #input-folder{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}.workspace{--left:224px;--right:326px;grid-template-columns:var(--left) minmax(0,1fr) var(--right);height:calc(100dvh - 118px);min-height:0}.workspace.hide-library{--left:0px}.workspace.hide-editor{--right:0px}.library{grid-column:1}.viewer{grid-column:2;grid-row:1}.editor{grid-column:3;grid-row:1}.viewer-bar{flex-shrink:0;min-height:62px;height:auto;padding:12px 18px;gap:12px;flex-wrap:wrap}.viewer-bar>div:first-child{flex:1;min-width:120px}.viewer-bar strong,.viewer-bar small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:32vw}.zoom-controls{display:flex;align-items:center;gap:3px}.zoom-controls button{padding:6px 10px}.zoom-controls select{font-size:11px;min-width:84px;padding:6px}.canvas{min-height:60px;overflow:hidden;touch-action:none}.canvas #image-stage{position:absolute;inset:0;overflow:hidden;pointer-events:none}.canvas img{position:absolute;left:50%;top:50%;max-width:none;max-height:none;transform-origin:center;user-select:none;pointer-events:none}.canvas.pannable{cursor:grab}.canvas.dragging{cursor:grabbing}.empty{z-index:1}.loading{z-index:2}.filmstrip{height:80px}.photo-info{flex-shrink:0}.folder-row{display:block;width:100%;text-align:left;margin:4px 0;background:#202620;border-color:#333d32}.folder-navigation{display:flex;gap:8px;margin:14px 0}.folder-navigation button{font-size:11px}#folder-dialog{width:620px}#folder-path-form{display:flex;align-items:end;gap:8px}#folder-path-form label{flex:1}#folder-list{height:240px;overflow:auto;border:1px solid var(--line);border-radius:5px;padding:8px}.folder-recursive{display:flex;gap:8px;align-items:center;margin:18px 0}#folder-error{color:#e4b58e;min-height:18px}#folder-select{width:100%}
 #detail-layer{position:absolute;left:50%;top:50%;overflow:hidden;pointer-events:none;transform-origin:center;z-index:1}
 #detail-layer img{position:absolute;left:0;top:0;max-width:none;max-height:none;transform:none;display:block}
@@ -64,9 +65,10 @@ body{background:radial-gradient(circle at 50% 0,#2b2118 0,var(--bg) 46%)}
 
 /* Lightweight global activity indicator. It overlays the workspace edge, so
    showing it never moves the photograph or the surrounding controls. */
-.activity-bar{position:fixed;z-index:30;left:0;right:0;top:116px;height:3px;overflow:hidden;background:#211a13;pointer-events:none}
-.activity-bar span{display:block;width:34%;height:100%;background:linear-gradient(90deg,transparent,#e0bd7f 24%,#f3dfb2 55%,transparent);animation:activity-sweep 1.05s ease-in-out infinite}
-@keyframes activity-sweep{from{transform:translateX(-110%)}to{transform:translateX(310%)}}
+.activity-slot{width:22px;flex:0 0 22px;display:grid;place-items:center}
+.activity-bar{display:block;width:14px;height:14px;border:1.5px solid #d1ae722b;border-top-color:#d1ae72;border-radius:50%;animation:activity-spin .85s linear infinite;pointer-events:none}
+@keyframes activity-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.activity-bar{animation:none;border-style:dotted}}
 
 /* Four resizable edges around the central viewer. */
 .workspace{--viewer-head:62px;--viewer-bottom:214px;position:relative}
@@ -85,7 +87,7 @@ body{background:radial-gradient(circle at 50% 0,#2b2118 0,var(--bg) 46%)}
 .panel-resizer:focus-visible,.viewer-resizer:focus-visible{outline:0}
 .workspace.hide-library .resize-left,.workspace.hide-editor .resize-right{display:none}
 body.layout-resizing{cursor:col-resize;user-select:none}body.layout-resizing.vertical{cursor:row-resize}
-@media(max-width:800px){.activity-bar{top:104px}.panel-resizer,.viewer-resizer{display:none}.workspace{--viewer-head:62px!important;--viewer-bottom:190px!important}}
+@media(max-width:800px){.panel-resizer,.viewer-resizer{display:none}.workspace{--viewer-head:62px!important;--viewer-bottom:190px!important}}
 /* Folder navigation stays separate from photo selection in the carousel. */
 .library .section-heading{align-items:center;margin-bottom:6px}
 .section-heading .quiet{padding:2px 6px;font-size:18px}
@@ -121,7 +123,6 @@ body.layout-resizing{cursor:col-resize;user-select:none}body.layout-resizing.ver
 .brand small{margin-top:4px}
 .view-toolbar{height:36px}
 .workspace{height:calc(100dvh - 96px);--viewer-head:52px;--viewer-bottom:218px}
-.activity-bar{top:94px}
 .viewer-bar{padding:6px 18px}
 .preview-caption{min-height:26px;padding:6px 22px}
 .film-edge{height:10px;flex-basis:10px}
@@ -135,7 +136,51 @@ body.layout-resizing{cursor:col-resize;user-select:none}body.layout-resizing.ver
 @media(max-width:800px){
  .topbar{height:56px}
  .workspace{height:calc(100dvh - 92px)}
- .activity-bar{top:90px}
  .viewer-bar{padding:6px 8px}
  .filmstrip-toolbar{padding:4px 10px}
+}
+
+/* Photo-first layout. The panel edges remain resizable and all controls remain
+   available; explanatory text lives in tooltips rather than extra chrome. */
+.topbar{height:44px;padding:0 14px;gap:20px}
+.brand{font-size:11px;gap:9px;letter-spacing:1.2px}.brand small{display:none}.mark{font-size:27px}
+.top-actions{gap:4px}.top-actions button{padding:6px 9px;font-size:11px}
+.view-toolbar{height:32px;padding:0 10px}.view-toolbar button{padding:4px 9px}
+#fullscreen{font-size:18px;line-height:20px;padding:2px 9px}
+.workspace{height:calc(100dvh - 76px);--left:190px;--right:286px;--viewer-head:42px;--viewer-bottom:146px}
+.workspace.hide-library{--left:0px!important}.workspace.hide-editor{--right:0px!important}
+.viewer-bar{padding:4px 10px;gap:8px;flex-wrap:nowrap}
+.viewer-bar small{margin-top:3px;font-size:9px}.viewer-bar strong{font-size:11px}
+.viewer-bar>div:first-child{min-width:0}.viewer-bar strong,.viewer-bar small{max-width:100%}
+.viewer-bar #compare{padding:5px;font-size:10px}.zoom-controls select{min-width:66px;padding:4px}.zoom-controls button{padding:4px 8px}
+.canvas{margin:0 6px;border:0}
+.film-edge{display:none}
+.viewer-resizer{height:5px;flex-basis:5px}.viewer-resizer::after{top:2px;left:6px;right:6px;background:#40372d}
+.preview-caption{min-height:22px;padding:3px 10px;font-size:9px;flex-wrap:wrap}
+.viewer-bottom{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:28px 30px minmax(0,1fr)}
+.filmstrip-toolbar{min-height:0;padding:2px 10px;gap:6px}.filmstrip-toolbar>div:first-child span{display:none}
+.filmstrip-toolbar strong{font-size:9px}.selection-summary{gap:6px}.selection-summary>span{border:0;background:none;padding:0;font-size:9px}
+.selection-summary button{padding:3px 6px;font-size:9px}
+.photo-filters{padding:2px 10px;gap:7px}.photo-filters .filters{flex-basis:190px}.photo-filters .filters button{padding:3px}
+.photo-filters .search{max-width:180px}.photo-filters .search input{padding:3px 0}
+.filmstrip{padding:5px 10px;gap:8px}.strip-entry,.strip-item{height:76px}.strip-item{width:112px}
+.strip-visual{height:54px;flex-basis:54px}.strip-caption{height:20px;padding:0 5px}
+.strip-select{width:23px;height:23px;top:4px;left:4px}.strip-active-badge{top:5px;right:4px;font-size:6px}
+.viewer-bottom .photo-info{display:none}
+.editor-heading{height:36px;padding:0 12px}#recipe-form{padding:0 12px 14px}
+.recipe-notice{font-size:9px;line-height:1.4}.export-panel{padding:10px 12px}.export-panel>small{font-size:8px;margin-top:5px}
+.library{padding-top:12px}.folder-tree-hint{font-size:10px}.folder-current{padding:12px}.library-foot{padding:12px}
+@media(max-width:1100px){.workspace{grid-template-columns:var(--left) minmax(0,1fr) var(--right)}}
+@media(max-width:800px){
+ .workspace{--viewer-head:42px!important;--viewer-bottom:146px!important}
+ .viewer-bar>div:first-child{flex-basis:auto}.viewer-bar #compare{max-width:90px}
+ .topbar{gap:8px}.offline{display:none}.brand{letter-spacing:0}
+ .photo-filters .filters{flex-basis:150px}.photo-filters .search{max-width:120px}
+}
+@media(max-width:570px){
+ .workspace{display:grid;height:calc(100dvh - 76px)}.viewer{height:100%;min-height:0}
+ .topbar{padding:0 8px}.brand{font-size:9px}.top-actions button{font-size:10px;padding:6px}
+ .view-toolbar{gap:3px}.view-toolbar button{font-size:10px;padding:4px 6px}
+ .activity-slot{margin-left:auto}.view-toolbar #focus-view{margin-left:0}
+ .viewer-bar #compare{max-width:75px}.photo-filters>span{display:none}
 }

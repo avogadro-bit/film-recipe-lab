@@ -4,6 +4,7 @@ from pathlib import Path
 import hashlib
 import json
 import subprocess
+import sys
 import time
 
 import numpy as np
@@ -14,13 +15,16 @@ from .external_tools import find_exiftool
 
 def local_file(path: Path) -> bool:
     st = path.stat()
+    # Do not trigger downloads of OneDrive/cloud placeholders on Windows.
+    if getattr(st, 'st_file_attributes', 0) & (0x1000 | 0x40000 | 0x400000):
+        return False
     # macOS SF_DATALESS=0x40000000. Blocks are a secondary heuristic only.
     return not bool(getattr(st, "st_flags", 0) & 0x40000000) and (getattr(st, "st_blocks", 1) > 0 or st.st_size == 0)
 
 
 def require_local(path: Path):
     if not local_file(path):
-        raise ValueError(f"iCloud file is not downloaded: {path}. Download it in Finder before reading it.")
+        raise ValueError(f"Cloud file is not downloaded: {path}. Make it available offline before reading it.")
 
 
 def sha256(path: Path) -> str:
@@ -58,7 +62,8 @@ def exif(path: Path) -> dict:
             return dng_input_metadata(path)
         return {"metadata_available": False, "reason": "ExifTool missing"}
     tags = ["BaselineExposure", "Make", "Model", "RawImageFullSize", "ImageWidth", "ImageHeight", "ISO", "ExposureTime", "FNumber", "FilmMode", "WhiteBalance", "WhiteBalanceFineTune", "DynamicRange", "DevelopmentDynamicRange", "HighlightTone", "ShadowTone", "Saturation", "Sharpness", "NoiseReduction", "GrainEffectRoughness", "GrainEffectSize", "ColorChromeEffect", "ColorChromeFXBlue", "Clarity", "DNGVersion", "PhotometricInterpretation", "Software", "ColorMatrix1", "ColorMatrix2", "ForwardMatrix1", "ForwardMatrix2", "AsShotNeutral", "CFARepeatPatternDim", "CFAPattern2", "BlackLevel", "WhiteLevel", "CalibrationIlluminant1", "CalibrationIlluminant2"]
-    result = subprocess.run([executable, "-j", "-G1", "-a", *["-" + t for t in tags], str(path)], capture_output=True, text=True, check=True, timeout=20)
+    result = subprocess.run([executable, "-j", "-G1", "-a", *["-" + t for t in tags], str(path)], capture_output=True, text=True, check=True, timeout=20,
+                            creationflags=0x08000000 if sys.platform == 'win32' else 0)
     data = json.loads(result.stdout)[0]
     return normalize_exif(data)
 

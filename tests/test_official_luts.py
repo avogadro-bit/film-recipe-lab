@@ -3,11 +3,17 @@ import unittest
 from unittest.mock import patch
 import numpy as np
 from fuji_recipe_lab.official_luts import (
-    FILMS, TO_F_GAMUT, flog2_encode, load_lut, interpolate, apply_official)
+    FILMS, TO_F_GAMUT, flog2_encode, load_lut, interpolate, apply_official,
+    lut_worker_count)
 from fuji_recipe_lab.studio import StudioRecipe, render
 
 
 class OfficialLutTests(unittest.TestCase):
+    def test_lut_worker_count_uses_cpu_without_oversubscription(self):
+        self.assertEqual(lut_worker_count(1),1)
+        self.assertEqual(lut_worker_count(4),3)
+        self.assertEqual(lut_worker_count(64),10)
+
     def test_fuji_gamma22_viewing_converts_to_browser_srgb(self):
         # A 50% gamma-2.2 video code is ~50.39% in sRGB. The previous
         # gamma-2.4 assumption instead produced ~47.25%, a visible error.
@@ -45,6 +51,12 @@ class OfficialLutTests(unittest.TestCase):
         a=np.full((2,2,3),.8,np.float32)
         np.testing.assert_allclose(render(a,StudioRecipe(film='classic_negative',exposure=1)),
                                    apply_official(a*2,'classic_negative'),atol=1e-6)
+
+    @unittest.skipIf(missing_luts(), "Official LUT integration: install Fuji assets separately")
+    def test_parallel_lut_is_identical_to_single_thread(self):
+        a=np.random.default_rng(91).uniform(0,2,(512,32,3)).astype(np.float32)
+        np.testing.assert_array_equal(apply_official(a,'provia',workers=1),
+                                      apply_official(a,'provia',workers=4))
 
     @unittest.skipIf(missing_luts(), "Official LUT integration: install Fuji assets separately")
     def test_acros_filter_is_applied_before_monochrome_conversion(self):

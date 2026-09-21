@@ -7,10 +7,10 @@ from fuji_recipe_lab.gui import Library
 from fuji_recipe_lab.source_exposure import source_exposure
 
 class CommonInputTests(unittest.TestCase):
-    def test_camera_profile_does_not_leak_between_models_or_makes(self):
-        for m in [{'Make':'Canon','Model':'LEICA Q3 43'}, {'Make':'Leica','Model':'LEICA Q3'}, {'Make':'Sony','Model':'ILCE-7M4'}]:
+    def test_camera_profile_is_scoped_to_leica_make(self):
+        for m in [{'Make':'Canon','Model':'LEICA M11'}, {'Make':'Sony','Model':'ILCE-7M4'}]:
             self.assertIsNone(camera_profile(m))
-        self.assertIsNotNone(camera_profile({'Make':' Leica Camera AG ','Model':' leica q3 43 '}))
+        self.assertIsNotNone(camera_profile({'Make':' Leica Camera AG ','Model':'M11'}))
 
     def test_common_representation_keeps_signed_values_and_highlight_latitude(self):
         a=np.array([[[-.1,.18,4.]]],np.float64)

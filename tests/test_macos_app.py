@@ -1,47 +1,64 @@
-"""Native delegate checks, also run with the macOS release environment."""
-import importlib.util
-import sys
+"""Native lifecycle checks without launching a real window in the unit suite."""
+import tempfile
 import threading
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from fuji_recipe_lab import macos_app
 
-@unittest.skipUnless(sys.platform == "darwin" and importlib.util.find_spec("AppKit"),
-                     "Cocoa bindings are only installed in the macOS release environment")
+
 class MacLifecycleTests(unittest.TestCase):
-    def setUp(self):
-        from fuji_recipe_lab.macos_app import StudioAppDelegate
-        self.delegate = StudioAppDelegate.alloc().init()
-        self.delegate.session_url = None
-        self.delegate.open_when_ready = False
-        self.delegate.stopping = threading.Event()
-        self.delegate.server = Mock()
-        self.delegate.worker = Mock()
+    def run_window(self, start_error=None):
+        stopped = threading.Event()
+        server = Mock()
+        server.shutdown.side_effect = stopped.set
+        window = Mock()
+        webview = SimpleNamespace(settings={}, create_window=Mock(return_value=window),
+                                  start=Mock(side_effect=start_error))
 
-    def test_reopen_pending_startup_is_deferred(self):
-        with patch("fuji_recipe_lab.macos_app.webbrowser.open") as opened:
-            self.delegate.applicationShouldHandleReopen_hasVisibleWindows_(None, False)
-            self.assertTrue(self.delegate.open_when_ready)
-            opened.assert_not_called()
+        def serve(roots, port, on_ready):
+            on_ready(server, 'http://127.0.0.1:8877/#session=test')
+            stopped.wait(5)
 
-    def test_reopen_uses_current_session_without_starting_second_server(self):
-        self.delegate.session_url = "http://127.0.0.1:8877/#session=test"
-        with patch("fuji_recipe_lab.macos_app.webbrowser.open") as opened:
-            for _ in range(3):
-                self.delegate.applicationShouldHandleReopen_hasVisibleWindows_(None, False)
-            self.assertEqual(opened.call_count, 3)
-            opened.assert_called_with(self.delegate.session_url, new=2)
-            self.delegate.worker.start.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict('sys.modules', {'webview': webview}), \
+                patch.object(macos_app, 'serve', side_effect=serve), \
+                patch.object(macos_app.Path, 'home', return_value=Path(directory)):
+            if start_error:
+                with self.assertRaisesRegex(RuntimeError, 'window failed'):
+                    macos_app.run([], 8877)
+            else:
+                self.assertEqual(macos_app.run([], 8877), 0)
+        server.shutdown.assert_called_once()
+        return webview
 
-    def test_quit_shuts_down_http_loop(self):
-        self.delegate.worker.is_alive.return_value = True
-        self.delegate.applicationWillTerminate_(None)
-        self.assertTrue(self.delegate.stopping.is_set())
-        self.delegate.server.shutdown.assert_called_once()
-        self.delegate.worker.join.assert_called_once_with(timeout=3)
+    def test_native_window_starts_fullscreen_with_downloads(self):
+        webview = self.run_window()
+        options = webview.create_window.call_args.kwargs
+        self.assertTrue(options['fullscreen'])
+        self.assertEqual(options['min_size'], (820, 600))
+        self.assertTrue(webview.settings['ALLOW_DOWNLOADS'])
+        self.assertFalse(webview.settings['ALLOW_FILE_URLS'])
+        self.assertFalse(webview.start.call_args.kwargs['private_mode'])
+        self.assertEqual(webview.start.call_args.kwargs['gui'], 'cocoa')
 
-    def test_quit_before_worker_started_does_not_join(self):
-        self.delegate.server = None
-        self.delegate.worker.is_alive.return_value = False
-        self.delegate.applicationWillTerminate_(None)
-        self.delegate.worker.join.assert_not_called()
+    def test_window_failure_stops_server(self):
+        self.run_window(RuntimeError('window failed'))
+
+    def test_server_failure_propagates_without_opening_window(self):
+        webview = Mock()
+        with patch.dict('sys.modules', {'webview': webview}), \
+                patch.object(macos_app, 'serve', side_effect=ValueError('bad port')):
+            with self.assertRaisesRegex(ValueError, 'bad port'):
+                macos_app.run([], 0)
+        webview.create_window.assert_not_called()
+
+    def test_toggle_dispatches_native_action_on_main_thread(self):
+        controls = macos_app.WindowControls()
+        controls._window = Mock()
+        helper = Mock()
+        with patch.dict('sys.modules', {'PyObjCTools': SimpleNamespace(AppHelper=helper)}):
+            controls.toggle_fullscreen()
+        helper.callAfter.assert_called_once_with(controls._window.native.toggleFullScreen_, None)

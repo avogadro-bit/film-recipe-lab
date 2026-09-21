@@ -14,8 +14,8 @@ from .input_profiles import RAW_EXTENSIONS, validate_linear_input, normalization
 from .recipe import Recipe
 from .raw import require_local, exif
 from .source_exposure import source_exposure, estimate_reference_ev
-from .official_luts import FILMS as OFFICIAL_FILMS, apply_official
-from .recipe_effects import wb_shift_gains, chrome_effect, dynamic_range_compress, linear_tone_curve, selective_tone_detail, preserve_film_hue
+from .official_luts import FILMS as OFFICIAL_FILMS, apply_official, run_parallel_rows
+from .recipe_effects import wb_shift_gains, chrome_effect, dynamic_range_compress, linear_tone_curve, selective_tone_detail, preserve_film_hue, protect_unrecoverable_highlights
 
 
 class StudioRecipe(Recipe):
@@ -39,8 +39,9 @@ class StudioRecipe(Recipe):
 
 
 def studio_status():
+    from . import __version__
     from .official_luts import missing_luts
-    return {'engine':'official-lut-photo-adapter-v1','available':True,'exact_fuji_render':False,
+    return {'app_version':__version__,'engine':'official-lut-photo-adapter-v1','available':True,'exact_fuji_render':False,
             'missing_luts':missing_luts(),
             'calibrated_against_fuji':False,'default_film':'provia',
             'official_lut_films':list(OFFICIAL_FILMS),
@@ -52,11 +53,17 @@ def studio_status():
             'chrome_reference':'public Fuji STRONG pairs + second-scene check'}
 
 
+def _resize_float_to(a,size,resample=Image.Resampling.LANCZOS):
+    if (a.shape[1],a.shape[0])==tuple(size):return a
+    return np.stack([np.asarray(Image.fromarray(a[:,:,c]).resize(size,resample))
+                     for c in range(3)],axis=-1)
+
+
 def resize_float(a, edge):
     h,w=a.shape[:2]
     if max(h,w)<=edge:return a
     size=(max(1,round(w*edge/max(h,w))),max(1,round(h*edge/max(h,w))))
-    return np.stack([np.asarray(Image.fromarray(a[:,:,c]).resize(size,Image.Resampling.LANCZOS)) for c in range(3)],axis=-1)
+    return _resize_float_to(a,size)
 
 
 def _decode_sensor(path, preview=True, floating_camera_rgb=False):
@@ -70,7 +77,7 @@ def _decode_sensor(path, preview=True, floating_camera_rgb=False):
             # not all bright scene-linear RGB. No invented highlight detail.
             sensor=raw.raw_image_visible
             if sensor.ndim!=2 or raw.raw_pattern.shape!=(2,2):
-                raise ValueError('Unsupported Leica sensor layout.')
+                raise ValueError('Unsupported floating-point DNG sensor layout.')
             h,w=sensor.shape;h-=h%2;w-=w%2
             count=np.zeros((h//2,w//2),np.uint8)
             for yy in (0,1):
@@ -93,7 +100,7 @@ def _decode_sensor(path, preview=True, floating_camera_rgb=False):
             matrix=np.asarray(raw.color_matrix,dtype=np.float32)
             if (a.shape[-1]!=3 or matrix.shape!=(3,4) or not np.isfinite(matrix).all()
                     or np.max(np.abs(matrix[:,:3]))<.01 or np.any(matrix[:,3]!=0)):
-                raise ValueError('Unsupported Leica color matrix; conversion stopped.')
+                raise ValueError('Unsupported DNG color matrix; conversion stopped.')
             a=np.einsum('...j,ij->...i',a.astype(np.float32),matrix[:,:3])
             mask=np.asarray(Image.fromarray(highlight_mask).resize((a.shape[1],a.shape[0]),Image.Resampling.BILINEAR))
             # Feather the mask boundary; keep the luminance/RAW headroom.
@@ -126,10 +133,7 @@ def _preview_source(path,mtime,size):
         linear,reference=_decode_sensor(path,True)
     linear*=info['gain']
     match={'reference_ev':0.,'reference_matched':False,'reason':'No readable embedded preview'}
-    if info.get('fixed_camera_exposure'):
-        match={'reference_ev':0.,'reference_matched':False,
-               'reason':'Fixed Leica model normalization; embedded preview not used'}
-    elif reference is not None:
+    if reference is not None:
         # A fixed reference film per source, independent of the selected recipe.
         # For other cameras PROVIA is only a neutral-ish adapter, not their JPEG engine.
         # The embedded JPEG includes the capture's tone/color recipe. Omitting
@@ -175,21 +179,50 @@ def srgb_decode(a):
 
 
 def blur(a, radius):
-    return gaussian_filter(a,sigma=(radius,radius,0),mode='reflect')
+    sigma=(radius,radius,0) if a.ndim==3 else (radius,radius)
+    if len(a)<512 or radius>16:return gaussian_filter(a,sigma=sigma,mode='reflect')
+    result=np.empty_like(a);halo=max(1,int(4*radius+.5))
+    def process(start,stop):
+        top=max(0,start-halo);bottom=min(len(a),stop+halo)
+        filtered=gaussian_filter(a[top:bottom],sigma=sigma,mode='reflect')
+        result[start:stop]=filtered[start-top:stop-top]
+    run_parallel_rows(len(a),process,block_rows=256)
+    return result
+
+
+def large_radius_blur(a,radius):
+    """Approximate a broad blur on a reduced float image, then restore size.
+
+    Clarity uses a radius proportional to source resolution (about 63 pixels
+    on a 60 MP file). A direct separable Gaussian spends tens of seconds on
+    that kernel. Reducing until the working radius is at most 12 pixels keeps
+    the same broad-frequency separation with bounded work and memory.
+    """
+    factor=max(1.,float(radius)/12)
+    if factor<=1:return blur(a,radius)
+    h,w=a.shape[:2]
+    size=(max(1,round(w/factor)),max(1,round(h/factor)))
+    small=_resize_float_to(a,size,Image.Resampling.BILINEAR)
+    small=blur(small,radius/factor)
+    return _resize_float_to(small,(w,h),Image.Resampling.BILINEAR)
 
 
 def _coordinate_noise(shape, origin=(0,0)):
     """Deterministic normal noise addressed by absolute image coordinates."""
-    y=np.arange(origin[0],origin[0]+shape[0],dtype=np.uint64)[:,None]
     x=np.arange(origin[1],origin[1]+shape[1],dtype=np.uint64)[None,:]
-    def uniform(seed):
+    def uniform(y,seed):
         value=x*np.uint64(0x9E3779B185EBCA87)^y*np.uint64(0xC2B2AE3D27D4EB4F)^np.uint64(seed)
         value^=value>>np.uint64(30);value*=np.uint64(0xBF58476D1CE4E5B9)
         value^=value>>np.uint64(27);value*=np.uint64(0x94D049BB133111EB)
         value^=value>>np.uint64(31)
         return ((value>>np.uint64(11)).astype(np.float64)+.5)*(1/2**53)
-    u=np.maximum(uniform(71821),1e-12);v=uniform(99173)
-    return (np.sqrt(-2*np.log(u))*np.cos(2*np.pi*v)).astype(np.float32)
+    result=np.empty(shape,np.float32)
+    for start in range(0,shape[0],128):
+        stop=min(start+128,shape[0])
+        y=np.arange(origin[0]+start,origin[0]+stop,dtype=np.uint64)[:,None]
+        u=np.maximum(uniform(y,71821),1e-12);v=uniform(y,99173)
+        result[start:stop]=np.sqrt(-2*np.log(u))*np.cos(2*np.pi*v)
+    return result
 
 
 @lru_cache(maxsize=32)
@@ -198,6 +231,28 @@ def _grain_deviation(size, scale):
     fine,coarse=((.35*scale,1.2*scale) if size=='large' else (.2*scale,.8*scale))
     fine_field=noise if fine<.3 else gaussian_filter(noise,fine,mode='reflect')
     return max(float((fine_field-gaussian_filter(noise,max(.35,coarse),mode='reflect')).std()),1e-5)
+
+
+def _grain_parameters(size,scale):
+    if size=='large':fine,coarse=.35*scale,1.2*scale
+    else:fine,coarse=.2*scale,.8*scale
+    return fine,max(.35,coarse)
+
+
+def _grain_rows(shape,size,scale,origin,start,stop,deviation):
+    """Generate one exact band of the deterministic full-frame grain field."""
+    fine,coarse=_grain_parameters(size,scale)
+    # scipy.ndimage's default Gaussian support is truncate=4.  Supplying that
+    # many real neighbouring rows makes an interior band identical to filtering
+    # one enormous full-frame noise buffer, without retaining that buffer.
+    halo=max(int(4*fine+.5),int(4*coarse+.5))
+    top=max(0,start-halo);bottom=min(shape[0],stop+halo)
+    noise=_coordinate_noise((bottom-top,shape[1]),(origin[0]+top,origin[1]))
+    fine_field=noise if fine<.3 else gaussian_filter(noise,fine,mode='reflect')
+    coarse_field=gaussian_filter(noise,coarse,mode='reflect')
+    offset=start-top
+    return (fine_field[offset:offset+stop-start]-
+            coarse_field[offset:offset+stop-start])/deviation
 
 
 def film_grain(shape, size, scale=1, origin=(0,0)):
@@ -209,15 +264,43 @@ def film_grain(shape, size, scale=1, origin=(0,0)):
     wrong texture. This field removes a broader low-frequency component while
     preserving a stable apparent scale across preview and full-size output.
     """
-    noise=_coordinate_noise(shape,origin)
-    if size=='large':
-        fine=.35*scale;coarse=1.2*scale
-    else:
-        fine=.2*scale;coarse=.8*scale
-    fine_field=noise if fine<.3 else gaussian_filter(noise,fine,mode='reflect')
-    field=fine_field-gaussian_filter(noise,max(.35,coarse),mode='reflect')
-    # A fixed normalization keeps adjacent independently rendered tiles equal.
-    return field/_grain_deviation(size,round(float(scale),4))
+    scale=float(scale)
+    deviation=_grain_deviation(size,round(scale,4))
+    result=np.empty(shape,np.float32)
+    def process(start,stop):
+        result[start:stop]=_grain_rows(shape,size,scale,origin,start,stop,deviation)
+    run_parallel_rows(shape[0],process,block_rows=256)
+    return result
+
+
+def apply_film_grain(a,strength,size,scale=1,origin=(0,0)):
+    """Add deterministic grain in parallel without full-frame temporaries."""
+    scale=float(scale)
+    deviation=_grain_deviation(size,round(scale,4))
+    amount=.022 if strength=='weak' else .040
+    weights=np.array([.2126,.7152,.0722],np.float32)
+    shape=a.shape[:2]
+    def process(start,stop):
+        block=a[start:stop]
+        field=_grain_rows(shape,size,scale,origin,start,stop,deviation)
+        luminance=np.clip(np.sum(block*weights,axis=2),0,1)
+        # Fujifilm's public pair is close to constant-amplitude display noise,
+        # with only a modest reduction at the tonal extremes.
+        visibility=.72+.28*np.power(np.clip(4*luminance*(1-luminance),0,1),.3)
+        delta=field*amount*visibility
+        block[:,:,0]+=delta;block[:,:,1]+=delta;block[:,:,2]+=delta
+    run_parallel_rows(shape[0],process,block_rows=256)
+
+
+def _apply_legacy_film(a,film):
+    """Apply one of the explicitly artistic, non-official display looks."""
+    a=np.clip(srgb_encode(a),0,1)
+    contrast,sat={'pro_neg_hi':(1.1,.94),'nostalgic_negative':(1.06,.93)}.get(film,(1.,1.))
+    if film=='nostalgic_negative':
+        y=np.sum(a*np.array([.2126,.7152,.0722],np.float32),axis=2)
+        a+=y[:,:,None]**2*np.array([.035,.012,-.025],np.float32)
+    a=a+(contrast-1)*4*(a-.5)*a*(1-a)
+    return a,sat
 
 
 def render(linear, r, neutral=False, *, output_transform=True, context=None, origin=(0,0)):
@@ -255,6 +338,9 @@ def render(linear, r, neutral=False, *, output_transform=True, context=None, ori
         a=dynamic_range_compress(a,dr)
     if neutral:return np.clip(srgb_encode(a),0,1)
     official=r.film in OFFICIAL_FILMS
+    protect_highlights=(highlights<0 or whites<0) and bool(
+        context.get('protect_neutral_clipped_highlights'))
+    film_reference=None
     if official:
         if r.film=='acros' and r.mono_filter!='none':
             # Artistic prefilter; the official pack only supplies plain ACROS.
@@ -266,25 +352,28 @@ def render(linear, r, neutral=False, *, output_transform=True, context=None, ori
         if stabilize_color:
             # Tone changes can move hue inside a 3D film LUT. Keep the film's
             # original hue while taking gradation from the adjusted RAW branch.
-            a=preserve_film_hue(apply_official(color_input,r.film),a)
+            film_reference=apply_official(color_input,r.film)
+            a=preserve_film_hue(film_reference,a)
         sat=1.
     else:
         # Legacy artistic looks are explicitly identified in the GUI.
-        a=np.clip(srgb_encode(a),0,1)
-        contrast,sat={'pro_neg_hi':(1.1,.94),'nostalgic_negative':(1.06,.93)}.get(r.film,(1.,1.))
-        if r.film=='nostalgic_negative':
-            y=np.sum(a*np.array([.2126,.7152,.0722],np.float32),axis=2)
-            a+=y[:,:,None]**2*np.array([.035,.012,-.025],np.float32)
-        a=a+(contrast-1)*4*(a-.5)*a*(1-a)
-    if highlights<0 or whites<0 or shadows>0 or blacks>0:
-        # Restore surviving RAW texture after the film/display transform, where
-        # a LUT shoulder would otherwise flatten it again.
+        a,sat=_apply_legacy_film(a,r.film)
+        if protect_highlights:
+            film_reference,_=_apply_legacy_film(color_input,r.film)
+    if protect_highlights and film_reference is not None:
+        a=protect_unrecoverable_highlights(a,film_reference,linear)
+        film_reference=None
+    if shadows>0 or blacks>0:
+        # Restore shadow texture; highlight recovery remains a smooth point
+        # transform to avoid bright/dark rims around cloud boundaries.
         a=selective_tone_detail(color_input,a,highlights=highlights,whites=whites,
                                 shadows=shadows,blacks=blacks)
-    y=np.sum(a*np.array([.2126,.7152,.0722],np.float32),axis=2)
-    a=y[:,:,None]+(a-y[:,:,None])*(sat*(1+r.color*.085))
-    a=chrome_effect(a,r.color_chrome)
-    a=chrome_effect(a,r.fx_blue,blue_only=True)
+    saturation=sat*(1+r.color*.085)
+    if saturation!=1:
+        y=np.sum(a*np.array([.2126,.7152,.0722],np.float32),axis=2)
+        a=y[:,:,None]+(a-y[:,:,None])*saturation
+    if r.color_chrome!='off':a=chrome_effect(a,r.color_chrome)
+    if r.fx_blue!='off':a=chrome_effect(a,r.fx_blue,blue_only=True)
     if r.film in ['acros','monochrome','sepia']:
         weights={'none':[.2126,.7152,.0722],'red':[.55,.4,.05],'yellow':[.35,.6,.05],'green':[.12,.82,.06]}[r.mono_filter]
         y=np.sum(a*np.array(weights,np.float32),axis=2)
@@ -295,22 +384,20 @@ def render(linear, r, neutral=False, *, output_transform=True, context=None, ori
     scale=max(context.get('full_shape',a.shape)[:2])/1600
     if r.noise_reduction>-4:
         amount=(r.noise_reduction+4)/16
-        a=a*(1-amount)+blur(a,max(.45,.65*scale))*amount
+        smoothed=blur(a,max(.45,.65*scale));a*=1-amount;smoothed*=amount;a+=smoothed
     if r.smooth_skin!='off':
         mask=np.clip((a[:,:,0]-a[:,:,2])*5,0,1)*np.clip((a[:,:,1]-a[:,:,2])*5,0,1)
         mix=mask[:,:,None]*({'weak':.25,'strong':.5}[r.smooth_skin])
         a=a*(1-mix)+blur(a,max(.6,1.5*scale))*mix
-    if r.clarity:a+=(a-blur(a,max(1,12*scale)))*r.clarity*.10
-    if r.sharpness:a+=(a-blur(a,max(.5,.75*scale)))*r.sharpness*.12
+    if r.clarity:
+        base=(large_radius_blur(a,max(1,12*scale)) if output_transform
+              else blur(a,max(1,12*scale)))
+        base*=-1;base+=a;base*=r.clarity*.10;a+=base
+    if r.sharpness:
+        base=blur(a,max(.5,.75*scale));base*=-1;base+=a;base*=r.sharpness*.12;a+=base
     if r.grain!='off':
-        noise=film_grain(a.shape[:2],r.grain_size,scale,origin)
-        amount=.022 if r.grain=='weak' else .040
-        luminance=np.clip(np.sum(a*np.array([.2126,.7152,.0722],np.float32),axis=2),0,1)
-        # Fujifilm's public pair is close to constant-amplitude display noise,
-        # with only a modest reduction at the tonal extremes.
-        visibility=.72+.28*np.power(np.clip(4*luminance*(1-luminance),0,1),.3)
-        a+=noise[:,:,None]*amount*visibility[:,:,None]
-    a=np.clip(a,0,1)
+        apply_film_grain(a,r.grain,r.grain_size,scale,origin)
+    np.clip(a,0,1,out=a)
     if not output_transform:return a
     h,w=a.shape[:2]
     cw,ch=int(w/r.digital_crop),int(h/r.digital_crop)
@@ -327,8 +414,9 @@ def render(linear, r, neutral=False, *, output_transform=True, context=None, ori
 def encode(a,r,preview=False):
     icc=ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')).tobytes()
     if r.color_space=='adobe_rgb' and not preview:
-        profile=Path('/System/Library/ColorSync/Profiles/AdobeRGB1998.icc')
-        if not profile.is_file():raise ValueError('Adobe RGB 1998 profile is missing from this computer.')
+        from .platform_support import adobe_rgb_profile
+        profile=adobe_rgb_profile()
+        if profile is None:raise ValueError('Adobe RGB 1998 profile is missing from this computer. Install the profile or select sRGB.')
         # sRGB linear to Adobe RGB (1998), both D65; encode gamma 563/256.
         linear=srgb_decode(a)
         a=np.clip(np.einsum("...i,ij->...j",linear,np.array([[.7151626,0,0],[.2848374,1,.0411705],[0,0,.9588295]],np.float32)),0,1)**(256/563)

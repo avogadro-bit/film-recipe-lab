@@ -8,23 +8,43 @@ import threading
 import unittest
 import zipfile
 
-from fuji_recipe_lab.gui import Handler, Library, STATIC, TileRequest, bind_studio_server, output_geometry
+from fuji_recipe_lab.gui import Handler, Library, STATIC, TileRequest, bind_studio_server, host_capacity, output_geometry
 from fuji_recipe_lab.studio import StudioRecipe
 
 
 class StaticGuiTests(unittest.TestCase):
+    def test_unavailable_lmo_and_hdr_controls_are_not_shown(self):
+        script=(STATIC/'app.js').read_text(encoding='utf-8')
+        self.assertNotIn('Lens Modulation Optimizer',script)
+        self.assertNotIn('Multi-exposure HDR',script)
+        self.assertNotIn('"lens_optimizer"',script)
+        self.assertNotIn('"hdr"',script)
+
+    def test_host_capacity_scales_with_cpu_and_memory_without_unbounded_raw_workers(self):
+        self.assertEqual(host_capacity(4,8*1024**3)['export_workers'],1)
+        self.assertEqual(host_capacity(8,16*1024**3)['export_workers'],2)
+        capacity=host_capacity(14,36*1024**3)
+        self.assertEqual((capacity['export_workers'],capacity['thumbnail_workers']),(4,7))
+        self.assertEqual(capacity['render_workers'],10)
+        self.assertFalse(host_capacity(8,8*1024**3)['full_resolution_prefetch'])
+        self.assertTrue(capacity['full_resolution_prefetch'])
+
     def test_product_name_batch_selection_and_film_chrome_are_visible(self):
         script=(STATIC/'app.js').read_text(encoding='utf-8')
         page=(STATIC/'index.html').read_text(encoding='utf-8')
         style=(STATIC/'style.css').read_text(encoding='utf-8')
-        self.assertIn('<title>Film Recipe Lab</title>',page)
-        self.assertIn('FILM RECIPE LAB',page)
+        self.assertIn('<title>KŌRA</title>',page)
+        self.assertIn('aria-label="KŌRA"',page)
         self.assertNotIn('One photograph. A thousand nuances.',page)
         self.assertIn('class="film-edge film-edge-top"',page)
         self.assertIn('const selectedIds = new Set(), recipesById = new Map();',script)
         self.assertIn('applyPatchToSelection',script)
         self.assertIn('/api/export-batch',script)
         self.assertIn('/api/thumbnail/',script)
+        self.assertIn('/api/prefetch',script)
+        self.assertIn('fullResolutionPrefetch=!!data.performance?.full_resolution_prefetch',script)
+        self.assertIn('performance.now()',script)
+        self.assertNotIn('x.Model?',script)
         self.assertIn('id="selection-clear"',page)
         self.assertIn('id="activity-bar"',page)
         for edge in ('data-resize="left"','data-resize="right"','data-resize="top"','data-resize="bottom"'):
@@ -32,6 +52,19 @@ class StaticGuiTests(unittest.TestCase):
         self.assertIn('beginActivity();',script)
         self.assertIn('localStorage.setItem("film-view-layout"',script)
         self.assertIn('.activity-bar',style)
+        self.assertIn('@keyframes activity-spin',style)
+        self.assertNotIn('activity-sweep',style)
+        self.assertIn('prefers-reduced-motion:reduce',style)
+        self.assertIn('id="fullscreen"',page)
+        self.assertIn('id="recipe-library-select"',page)
+        self.assertIn('id="choose-recipe-folder"',page)
+        self.assertNotIn('id="load-recipe"',page)
+        self.assertNotIn('id="recipe-input"',page)
+        self.assertIn('/api/recipes/folder',script)
+        self.assertIn('/api/recipes/load',script)
+        self.assertIn('localStorage.setItem("film-recipe-folder"',script)
+        self.assertIn('/api/window/fullscreen',script)
+        self.assertIn('document.documentElement.requestFullscreen()',script)
         self.assertIn('.panel-resizer',style)
         self.assertIn('strip-active-badge',style)
         self.assertIn('.strip-entry.batch-selected',style)
@@ -65,6 +98,30 @@ class StaticGuiTests(unittest.TestCase):
 
 
 class GuiServerTests(unittest.TestCase):
+    def test_export_reports_server_stages_and_records_completed_transfer(self):
+        from unittest.mock import patch
+        import numpy as np
+        path=Path(self.scratch.name)/'timed.DNG';path.write_bytes(b'fixture')
+        item=self.server.library.add(path)
+        self.server.library.linear_cache[item['id']]=np.ones((12,18,3),np.float32)
+        body=json.dumps({'id':item['id'],'recipe':{}})
+        with patch('fuji_recipe_lab.gui.render_context',return_value={}), \
+             patch('fuji_recipe_lab.gui.render',side_effect=lambda pixels,*args,**kwargs:pixels), \
+             patch('fuji_recipe_lab.gui.encode',return_value=(b'jpeg','image/jpeg')), \
+             patch.object(Handler,'record_export') as recorded:
+            client=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=3)
+            client.request('POST','/api/export',body,{'X-Fuji-Session':self.server.session_token})
+            response=client.getresponse()
+            self.assertEqual(response.status,200)
+            timing=response.getheader('Server-Timing')
+            self.assertEqual(response.read(),b'jpeg');client.close()
+            for stage in ('queue','decode_or_prefetch_wait','optics','metadata','render','encode','server'):
+                self.assertIn(stage+';dur=',timing)
+            # Wait for handler cleanup after receipt of the HTTP response.
+            self.server.shutdown()
+            recorded.assert_called_once()
+            self.assertIn('response_write',recorded.call_args.args[0])
+
     def test_dng_tiles_correct_only_region_and_preserve_full_frame_result(self):
         from unittest.mock import patch
         import numpy as np
@@ -151,8 +208,7 @@ class GuiServerTests(unittest.TestCase):
         a=self.server.library.add(first);b=self.server.library.add(second)
         observed=[]
 
-        def develop(request,export=False):
-            self.assertTrue(export)
+        def develop(request):
             observed.append((request.id,request.recipe.exposure))
             return f'{request.id}:{request.recipe.exposure}'.encode(),'image/jpeg'
 
@@ -160,15 +216,88 @@ class GuiServerTests(unittest.TestCase):
             {'id':a['id'],'recipe':{'exposure':-1,'file_type':'jpeg'}},
             {'id':b['id'],'recipe':{'exposure':1,'file_type':'jpeg'}},
         ]})
-        with patch.object(Library,'develop',side_effect=develop):
+        with patch.object(Library,'_develop_batch_item',side_effect=develop):
             code,data=self.request('/api/export-batch','POST',body)
         self.assertEqual(code,200)
         with zipfile.ZipFile(__import__('io').BytesIO(data)) as archive:
             self.assertEqual(len(archive.namelist()),2)
             payloads=[archive.read(name) for name in archive.namelist()]
-        self.assertEqual(observed,[(a['id'],-1.0),(b['id'],1.0)])
+        self.assertCountEqual(observed,[(a['id'],-1.0),(b['id'],1.0)])
         self.assertNotEqual(payloads[0],payloads[1])
         self.assertFalse(list(Path(self.scratch.name).glob('film-recipe-lab-*.zip')))
+
+    def test_batch_export_runs_independent_photos_concurrently(self):
+        from unittest.mock import patch
+        from fuji_recipe_lab.gui import RenderRequest
+        library=Library([],self.scratch.name,capacity={"cpu_count":8,"physical_memory":16*1024**3,
+                                                       "export_workers":2,"thumbnail_workers":4})
+        requests=[]
+        for name in ('one.DNG','two.DNG'):
+            path=Path(self.scratch.name)/name;path.write_bytes(b'fixture')
+            requests.append(RenderRequest(id=library.add(path)['id'],recipe=StudioRecipe()))
+        barrier=threading.Barrier(2);active=0;peak=0;guard=threading.Lock()
+        def develop(request):
+            nonlocal active,peak
+            with guard:active+=1;peak=max(peak,active)
+            barrier.wait(timeout=1)
+            with guard:active-=1
+            return request.id.encode(),'image/jpeg'
+        with patch.object(library,'_develop_batch_item',side_effect=develop):
+            archive=library.export_jpeg_archive(requests)
+        try:self.assertEqual(peak,2)
+        finally:archive.unlink(missing_ok=True)
+
+    def test_heavy_batch_reduces_image_workers_to_avoid_memory_pressure(self):
+        from fuji_recipe_lab.gui import RenderRequest
+        library=Library([],self.scratch.name,capacity={"cpu_count":14,"physical_memory":36*1024**3,
+                                                       "export_workers":4,"thumbnail_workers":7})
+        light=[RenderRequest(id=str(i),recipe=StudioRecipe()) for i in range(4)]
+        heavy=[RenderRequest(id=str(i),recipe=StudioRecipe(highlights=-50,clarity=2,
+               grain='strong',color_chrome='strong',lens_distortion='auto')) for i in range(4)]
+        self.assertEqual(library.batch_export_workers(light),4)
+        self.assertEqual(library.batch_export_workers(heavy),2)
+
+    def test_batch_export_reuses_active_full_resolution_decode(self):
+        from unittest.mock import patch
+        from fuji_recipe_lab.gui import RenderRequest
+        import numpy as np
+        path=Path(self.scratch.name)/'cached.DNG';path.write_bytes(b'fixture')
+        item=self.server.library.add(path)
+        cached=np.ones((12,18,3),np.float32)
+        self.server.library.linear_cache[item['id']]=cached
+        request=RenderRequest(id=item['id'],recipe=StudioRecipe())
+        with patch('fuji_recipe_lab.gui.decode',side_effect=AssertionError('decode should be reused')), \
+             patch('fuji_recipe_lab.gui.render',side_effect=lambda pixels,*args,**kwargs:pixels) as renderer, \
+             patch('fuji_recipe_lab.gui.encode',return_value=(b'jpeg','image/jpeg')):
+            self.assertEqual(self.server.library._develop_batch_item(request),(b'jpeg','image/jpeg'))
+        self.assertIs(renderer.call_args.args[0],cached)
+
+    def test_idle_prefetch_populates_the_same_full_resolution_export_cache(self):
+        from unittest.mock import patch
+        from fuji_recipe_lab.gui import RenderRequest
+        import numpy as np
+        capacity={"cpu_count":8,"physical_memory":16*1024**3,"export_workers":2,
+                  "thumbnail_workers":4,"full_resolution_prefetch":True}
+        library=Library([],self.scratch.name,capacity=capacity)
+        path=Path(self.scratch.name)/'prefetch.DNG';path.write_bytes(b'fixture')
+        item=library.add(path);pixels=np.ones((12,18,3),np.float32)
+        request=RenderRequest(id=item['id'],recipe=StudioRecipe())
+        with patch('fuji_recipe_lab.gui.decode',return_value=pixels) as decoder:
+            self.assertTrue(library.prefetch(item['id']))
+        decoder.assert_called_once_with(Path(item['path']),preview=False)
+        with patch('fuji_recipe_lab.gui.decode',side_effect=AssertionError('decode should be reused')), \
+             patch('fuji_recipe_lab.gui.source_details',return_value={}), \
+             patch('fuji_recipe_lab.gui.render',side_effect=lambda value,*args,**kwargs:value), \
+             patch('fuji_recipe_lab.gui.encode',return_value=(b'jpeg','image/jpeg')):
+            self.assertEqual(library.develop(request,export=True),(b'jpeg','image/jpeg'))
+
+    def test_idle_prefetch_is_disabled_on_memory_constrained_hosts(self):
+        from unittest.mock import patch
+        library=Library([],self.scratch.name,capacity={"cpu_count":4,"physical_memory":8*1024**3,
+            "export_workers":1,"thumbnail_workers":2,"full_resolution_prefetch":False})
+        with patch.object(library,'full_linear') as full_linear:
+            self.assertFalse(library.prefetch('unused'))
+        full_linear.assert_not_called()
 
     def test_batch_export_rejects_non_jpeg_and_duplicate_photos(self):
         path=Path(self.scratch.name)/'batch.DNG';path.write_bytes(b'fixture')
@@ -255,6 +384,29 @@ class GuiServerTests(unittest.TestCase):
             release.set();quick.join(1);worker.join(1)
         self.assertFalse(quick.is_alive());self.assertFalse(worker.is_alive())
 
+    def test_export_pauses_new_source_detail_renders(self):
+        from unittest.mock import patch
+        import numpy as np
+        from fuji_recipe_lab.gui import RenderRequest
+        path=Path(self.scratch.name)/'priority.DNG';path.write_bytes(b'fixture')
+        item=self.server.library.add(path);pixels=np.ones((360,540,3),np.float32)
+        self.server.library.linear_cache[item['id']]=pixels
+        started=threading.Event();release=threading.Event()
+        def renderer(source,*args,**kwargs):
+            if kwargs.get('output_transform',True):
+                started.set();self.assertTrue(release.wait(2))
+            return source
+        request=RenderRequest(id=item['id'],recipe=StudioRecipe())
+        tile=TileRequest(id=item['id'],recipe=StudioRecipe(),x=0,y=0,size=128)
+        with patch('fuji_recipe_lab.gui.render',side_effect=renderer), \
+             patch('fuji_recipe_lab.gui.encode',return_value=(b'image','image/jpeg')):
+            worker=threading.Thread(target=self.server.library.develop,args=(request,True))
+            worker.start();self.assertTrue(started.wait(1))
+            with self.assertRaisesRegex(ValueError,'paused during export'):
+                self.server.library.render_tile(tile)
+            release.set();worker.join(1)
+        self.assertFalse(worker.is_alive())
+
     def test_startup_uses_folder_shortcuts_without_scanning_photos(self):
         root=Path(self.scratch.name)
         (root/'photo.DNG').write_bytes(b'fixture')
@@ -284,6 +436,10 @@ class GuiServerTests(unittest.TestCase):
 
     def setUp(self):
         self.scratch = tempfile.TemporaryDirectory()
+        from unittest.mock import patch
+        self.log_patch = patch('fuji_recipe_lab.diagnostics.log_path', return_value=Path(self.scratch.name)/'errors.jsonl')
+        self.log_patch.start()
+        self.addCleanup(self.log_patch.stop)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.session_token = "unit-test-session"
         self.server.library = Library([], self.scratch.name)
@@ -314,6 +470,31 @@ class GuiServerTests(unittest.TestCase):
         self.assertTrue(data["engine"]["available"])
         self.assertFalse(data["engine"]["exact_fuji_render"])
 
+    def test_diagnostics_are_authenticated_and_persist_safe_context(self):
+        body = json.dumps({'operation':'zoom', 'message':'Tile failed', 'stack':'app.js:382',
+                           'context':{'photo_id':'abc','zoom':4,'recipe':{'name':'private'}}})
+        self.assertEqual(self.request('/api/diagnostics','POST',body,{'X-Fuji-Session':'wrong'})[0],403)
+        code, result = self.request('/api/diagnostics','POST',body)
+        self.assertEqual(code,200)
+        self.assertTrue(result['recorded'])
+        events=[json.loads(line) for line in (Path(self.scratch.name)/'errors.jsonl').read_text().splitlines()]
+        event=events[-1]
+        self.assertEqual(event['operation'],'client.zoom')
+        self.assertEqual(event['context'],{'photo_id':'abc','zoom':4})
+        self.assertNotIn('private',json.dumps(event))
+
+    def test_api_exception_has_correlated_traceback(self):
+        from unittest.mock import patch
+        with patch.object(self.server.library,'render_tile',side_effect=RuntimeError('tile test')):
+            code,result=self.request('/api/tile','POST',json.dumps({'id':'abc','recipe':{},'x':0,'y':0}),
+                                     {'X-Film-Request-ID':'request-test'})
+        self.assertEqual(code,422)
+        event=json.loads((Path(self.scratch.name)/'errors.jsonl').read_text().splitlines()[-1])
+        self.assertEqual(event['id'],result['error_id'])
+        self.assertEqual(event['context']['request_id'],'request-test')
+        self.assertEqual(event['context']['photo_id'],'abc')
+        self.assertTrue(event['frames'])
+
     def test_recipe_roundtrip_and_invalid_input(self):
         code, data = self.request("/api/recipe", "POST", json.dumps({"name": "Test", "film": "acros", "highlights": -37, "whites": -12, "wb_red": 2}))
         self.assertEqual(code, 200)
@@ -322,9 +503,49 @@ class GuiServerTests(unittest.TestCase):
         self.assertTrue(data["render_available"])
         self.assertEqual(self.request("/api/recipe", "POST", '{"unknown": 1}')[0], 422)
 
+    def test_recipe_folder_indexes_valid_json_and_loads_by_server_id(self):
+        folder=Path(self.scratch.name)/'recipes';folder.mkdir()
+        (folder/'Kodachrome.json').write_text(json.dumps({'name':'Kodachrome','film':'classic_chrome','grain':'strong'}))
+        (folder/'Broken.json').write_text('{not json')
+        (folder/'notes.txt').write_text('{}')
+        code,data=self.request('/api/recipes/folder','POST',json.dumps({'path':str(folder)}))
+        self.assertEqual(code,200)
+        self.assertEqual(data['folder'],str(folder.resolve()))
+        self.assertEqual(data['invalid_count'],1)
+        self.assertEqual([(item['name'],item['filename']) for item in data['recipes']],
+                         [('Kodachrome','Kodachrome.json')])
+        code,loaded=self.request('/api/recipes/load','POST',json.dumps({'id':data['recipes'][0]['id']}))
+        self.assertEqual(code,200)
+        self.assertEqual(loaded['recipe']['film'],'classic_chrome')
+        self.assertEqual(loaded['recipe']['grain'],'strong')
+
+    def test_recipe_folder_rejects_unknown_ids_symlinks_and_large_json(self):
+        folder=Path(self.scratch.name)/'recipes';folder.mkdir()
+        outside=Path(self.scratch.name)/'outside.json';outside.write_text(json.dumps({'name':'Outside'}))
+        try:(folder/'Outside.json').symlink_to(outside)
+        except OSError:pass
+        (folder/'Large.json').write_bytes(b'{' + b' '*(64*1024) + b'}')
+        code,data=self.request('/api/recipes/folder','POST',json.dumps({'path':str(folder)}))
+        self.assertEqual(code,200)
+        self.assertEqual(data['recipes'],[])
+        self.assertEqual(data['invalid_count'],1)
+        self.assertEqual(self.request('/api/recipes/load','POST',json.dumps({'id':'../../outside'}))[0],422)
+
+    def test_fullscreen_is_native_only_and_requires_session(self):
+        from unittest.mock import Mock
+        self.assertFalse(self.request('/api/library')[1]['native_window'])
+        self.assertEqual(self.request('/api/window/fullscreen', 'POST', '{}')[0], 409)
+        self.server.toggle_fullscreen = Mock()
+        self.assertTrue(self.request('/api/library')[1]['native_window'])
+        for headers in ({'X-Fuji-Session': 'wrong'}, {'Origin': 'https://untrusted.example'}):
+            self.assertEqual(self.request('/api/window/fullscreen', 'POST', '{}', headers)[0], 403)
+        self.server.toggle_fullscreen.assert_not_called()
+        self.assertEqual(self.request('/api/window/fullscreen', 'POST', '{}'), (200, {'ok': True}))
+        self.server.toggle_fullscreen.assert_called_once()
+
     def test_render_requires_valid_photo_and_recipe(self):
         self.assertEqual(self.request("/api/render", "POST", "{}")[0], 422)
-        self.assertEqual(list(Path(self.scratch.name).iterdir()), [])
+        self.assertEqual([p.name for p in Path(self.scratch.name).iterdir()], ['errors.jsonl'])
 
     def test_import_is_confined_to_generated_directory(self):
         self.assertEqual(self.request("/api/import?name=photo.jpg", "POST", "not-raw")[0], 415)

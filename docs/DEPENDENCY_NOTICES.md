@@ -14,7 +14,10 @@ components for debugging such modifications is imposed by Film Recipe Lab.
 ## Components and attribution
 
 - Python: Python Software Foundation license and included third-party notices.
-- PyObjC core and Cocoa bindings: MIT license, Ronald Oussoren and contributors.
+- PyObjC core and Cocoa, Quartz, WebKit, Security and UniformTypeIdentifiers
+  bindings: MIT license, Ronald Oussoren and contributors.
+- pywebview: BSD 3-Clause license; Bottle: MIT, with their included notices.
+  proxy_tools: included upstream license (BSD text; package metadata labels MIT).
 - rawpy: MIT, Copyright Maik Riechert. LibRaw: LGPL 2.1, Copyright LibRaw LLC
   and contributors; its additional attributions are preserved in the source archive.
 - lensfunpy: MIT, Copyright Maik Riechert. Lensfun library: LGPL 3.0.

@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 from scipy.ndimage import uniform_filter
+from .official_luts import run_parallel_rows
 
 WB_TABLE=json.loads((Path(__file__).with_name('luts')/'wb-shifts-xt4.json').read_text())
 
@@ -22,27 +23,32 @@ def wb_shift_gains(red,blue):
 def chrome_effect(a,setting,blue_only=False):
     if setting=='off':return a
     strength={'weak':.5,'strong':1.}[setting]
-    high=a.max(-1);low=a.min(-1);chroma=high-low
-    sat=np.clip(chroma/np.maximum(high,1e-6),0,1)
-    y=np.sum(a*np.array([.2126,.7152,.0722],np.float32),axis=-1)
-    if blue_only:
-        hue=np.clip((a[...,2]-np.maximum(a[...,0],a[...,1]))/np.maximum(chroma,1e-6),0,1)
-        mask=sat**1.32407230501026*hue**.3702288353626123
-        out=a-strength*.6912800902142242*(mask*y)[...,None]
-    else:
-        hue=np.clip((np.maximum(a[...,0],a[...,1])-a[...,2])/np.maximum(chroma,1e-6),0,1)
-        mask=sat**1.09437228*hue
-        density=.15368655*mask
-        target=y*(1-density)
-        # Refit with bounded chroma: taper extra saturation near the gamut
-        # boundary, instead of exaggerating already saturated colors and
-        # independently clipping their channels (revision 2).
-        gain=1-density+mask*(1-sat)
-        gain=np.minimum(gain,target/np.maximum(y-low,1e-6))
-        gain=np.minimum(gain,(1-target)/np.maximum(high-y,1e-6))
-        strong=target[...,None]+gain[...,None]*(a-y[...,None])
-        out=a+strength*(strong-a)
-    return np.clip(out,0,1)
+    result=np.empty_like(a)
+    def process(start,stop):
+        source=a[start:stop]
+        high=source.max(-1);low=source.min(-1);chroma=high-low
+        sat=np.clip(chroma/np.maximum(high,1e-6),0,1)
+        y=np.sum(source*np.array([.2126,.7152,.0722],np.float32),axis=-1)
+        if blue_only:
+            hue=np.clip((source[...,2]-np.maximum(source[...,0],source[...,1]))/np.maximum(chroma,1e-6),0,1)
+            mask=sat**1.32407230501026*hue**.3702288353626123
+            out=source-strength*.6912800902142242*(mask*y)[...,None]
+        else:
+            hue=np.clip((np.maximum(source[...,0],source[...,1])-source[...,2])/np.maximum(chroma,1e-6),0,1)
+            mask=sat**1.09437228*hue
+            density=.15368655*mask
+            target=y*(1-density)
+            # Refit with bounded chroma: taper extra saturation near the gamut
+            # boundary, instead of exaggerating already saturated colors and
+            # independently clipping their channels (revision 2).
+            gain=1-density+mask*(1-sat)
+            gain=np.minimum(gain,target/np.maximum(y-low,1e-6))
+            gain=np.minimum(gain,(1-target)/np.maximum(high-y,1e-6))
+            strong=target[...,None]+gain[...,None]*(source-y[...,None])
+            out=source+strength*(strong-source)
+        np.clip(out,0,1,out=result[start:stop])
+    run_parallel_rows(len(a),process)
+    return result
 
 
 def dynamic_range_compress(a,level):
@@ -101,6 +107,35 @@ def _tone_tail(ev, pivot, strength, high):
     return np.where(distance>0,pivot+mapped if high else pivot-mapped,ev)
 
 
+def _smoothstep(value):
+    value=np.clip(value,0,1)
+    return value*value*(3-2*value)
+
+
+def _unrecoverable_highlight_weight(source):
+    """A broad, continuous highlight shoulder for floating DNG input.
+
+    RGB neutrality is not evidence of clipping: a cloud's color can cross a
+    neutrality threshold while its brightness is continuous. The former narrow
+    chroma mask produced white islands in otherwise recovered clouds. A smooth
+    luminance-only shoulder preserves gradation and applies equally to nearby
+    neutral and tinted pixels. This is a tone policy, not a sensor-clipping mask.
+    """
+    weights=np.array([.2126,.7152,.0722],np.float32)
+    y=np.sum(source*weights,axis=-1)
+    return _smoothstep((y-.8)/1.2)
+
+
+def protect_unrecoverable_highlights(adjusted,reference,source):
+    """Blend the bright DNG shoulder smoothly toward the baseline film rendering."""
+    def process(start,stop):
+        weight=_unrecoverable_highlight_weight(source[start:stop])[...,None]
+        adjusted[start:stop]*=1-weight
+        adjusted[start:stop]+=reference[start:stop]*weight
+    run_parallel_rows(len(adjusted),process)
+    return adjusted
+
+
 def linear_tone_curve(a, highlights=0, shadows=0, whites=0, blacks=0):
     """Four-way, exposure-domain tonal adjustment before film clipping.
 
@@ -112,19 +147,23 @@ def linear_tone_curve(a, highlights=0, shadows=0, whites=0, blacks=0):
     """
     if highlights == 0 and whites == 0 and shadows == 0 and blacks == 0:
         return a
-    y=np.sum(a*np.array([.2126,.7152,.0722],np.float32),axis=-1)
-    valid=y>1e-12
-    ev=np.log2(np.maximum(y,1e-12)/.18)
-    # Narrow endpoint controls first, then the broader tonal controls. Every
-    # stage is monotonic, so even four extreme settings preserve ordering.
-    ev=_tone_tail(ev,-2.5,-1.55*blacks/100,False)
-    ev=_tone_tail(ev,0,-1.35*shadows/100,False)
-    ev=_tone_tail(ev,0,1.25*highlights/100,True)
-    ev=_tone_tail(ev,2,1.85*whites/100,True)
-    target=.18*np.exp2(np.clip(ev,-60,60))
-    scale=np.ones_like(y)
-    np.divide(target,y,out=scale,where=valid)
-    return a*scale[...,None]
+    result=np.empty_like(a)
+    def process(start,stop):
+        source=a[start:stop]
+        y=np.sum(source*np.array([.2126,.7152,.0722],np.float32),axis=-1)
+        valid=y>1e-12
+        ev=np.log2(np.maximum(y,1e-12)/.18)
+        # Narrow endpoint controls first, then the broader tonal controls.
+        ev=_tone_tail(ev,-2.5,-1.55*blacks/100,False)
+        ev=_tone_tail(ev,0,-1.35*shadows/100,False)
+        ev=_tone_tail(ev,0,1.25*highlights/100,True)
+        ev=_tone_tail(ev,2,1.85*whites/100,True)
+        target=.18*np.exp2(np.clip(ev,-60,60))
+        scale=np.ones_like(y)
+        np.divide(target,y,out=scale,where=valid)
+        result[start:stop]=source*scale[...,None]
+    run_parallel_rows(len(a),process)
+    return result
 
 
 def _resize_plane(a, size):
@@ -146,17 +185,15 @@ def _guided_base(a, radius, epsilon=.16):
 
 
 def selective_tone_detail(original, adjusted, highlights=0, shadows=0, whites=0, blacks=0):
-    """Restore existing RAW texture after four-way tonal compression.
+    """Restore shadow texture without locally amplifying bright cloud edges.
 
-    Recovery directions are negative Highlights/Whites and positive
-    Shadows/Blacks. Only detail already present in the RAW luminance is used;
-    clipped sensor samples are never invented.
+    Highlights/Whites are handled by the monotonic RAW tone curve. Adding
+    source log-detail after the film shoulder exaggerated small differences
+    around clipped clouds into dark lobes and white rims.
     """
-    highlight_strength=np.clip(-highlights/100,0,1)
-    white_strength=np.clip(-whites/100,0,1)
     shadow_strength=np.clip(shadows/100,0,1)
     black_strength=np.clip(blacks/100,0,1)
-    if max(highlight_strength,white_strength,shadow_strength,black_strength)==0:
+    if max(shadow_strength,black_strength)==0:
         return adjusted
 
     weights=np.array([.2126,.7152,.0722],np.float32)
@@ -174,33 +211,32 @@ def selective_tone_detail(original, adjusted, highlights=0, shadows=0, whites=0,
     source_base=_guided_base(source_log,radius)
     adjusted_base=_guided_base(adjusted_log,radius)
     source_detail=source_log-source_base
-    # Restore what the global curve removed, then strengthen surviving RAW
-    # structure modestly. The second term is essential for broad cloud texture:
-    # a point curve can preserve ordering while still looking perceptually flat.
+    # Restore surviving shadow structure removed by the global curve.
     recovered_detail=(source_detail-(adjusted_log-adjusted_base))+.65*source_detail
 
     base_y=np.exp2(source_base)
-    highlight_mask=np.clip((base_y-.35)/(.95-.35),0,1)
-    highlight_mask=highlight_mask*highlight_mask*(3-2*highlight_mask)
-    white_mask=np.clip((base_y-.72)/(1.35-.72),0,1)
-    white_mask=white_mask*white_mask*(3-2*white_mask)
     shadow_mask=1-np.clip((base_y-.06)/(.30-.06),0,1)
     shadow_mask=shadow_mask*shadow_mask*(3-2*shadow_mask)
     black_mask=1-np.clip((base_y-.015)/(.085-.015),0,1)
     black_mask=black_mask*black_mask*(3-2*black_mask)
-    strength=np.maximum.reduce((.95*highlight_strength*highlight_mask,
-                                .85*white_strength*white_mask,
-                                .75*shadow_strength*shadow_mask,
-                                .65*black_strength*black_mask))
-    # Restore at most 0.85 stop locally. This is enough to keep cloud and
-    # foliage structure after compression without producing edge halos.
+    strength=np.maximum(.75*shadow_strength*shadow_mask,.65*black_strength*black_mask)
+    # Bound the shadow-detail adjustment to 0.85 stop.
     gain_small=np.exp2(np.clip(recovered_detail*strength,-.85,.85)).astype(np.float32)
     gain=_resize_plane(gain_small,(w,h)) if small_size!=(w,h) else gain_small
-    gain=np.where((source_y>2**-14)&(adjusted_y>2**-14),gain,1)
-    # Scaling preserves hue only while no display channel clips. Let bright
-    # detail recover mainly by locally darkening valleys near the white limit.
-    gain=np.minimum(gain,1/np.maximum(adjusted.max(-1),1e-8))
-    return adjusted*gain[...,None]
+    result=np.empty_like(adjusted)
+    def process(start,stop):
+        block_gain=np.where((source_y[start:stop]>2**-14)&(adjusted_y[start:stop]>2**-14),
+                            gain[start:stop],1)
+        # Suppress shadow-detail spill across high-contrast sky/foliage edges
+        # after resizing the low-resolution gain plane.
+        shadow_gate=1-_smoothstep((source_y[start:stop]-.18)/.17)
+        block_gain=1+(block_gain-1)*shadow_gate
+        # Scaling preserves hue only while no display channel clips. Let bright
+        # detail recover mainly by locally darkening valleys near the white limit.
+        block_gain=np.minimum(block_gain,1/np.maximum(adjusted[start:stop].max(-1),1e-8))
+        result[start:stop]=adjusted[start:stop]*block_gain[...,None]
+    run_parallel_rows(len(adjusted),process)
+    return result
 
 
 def preserve_film_hue(reference, adjusted):
@@ -211,10 +247,15 @@ def preserve_film_hue(reference, adjusted):
     This is an independent color-stability policy, not Fuji's algorithm.
     """
     weights=np.array([.2126,.7152,.0722],np.float32)
-    y=np.sum(reference*weights,-1)
-    target=np.clip(np.sum(adjusted*weights,-1),0,1)
-    chroma=reference-y[...,None]
-    gain=target/np.maximum(y,1e-8)
-    gain=np.minimum(gain,target/np.maximum(y-reference.min(-1),1e-8))
-    gain=np.minimum(gain,(1-target)/np.maximum(reference.max(-1)-y,1e-8))
-    return np.clip(target[...,None]+gain[...,None]*chroma,0,1)
+    result=np.empty_like(reference)
+    def process(start,stop):
+        ref=reference[start:stop];adj=adjusted[start:stop]
+        y=np.sum(ref*weights,-1)
+        target=np.clip(np.sum(adj*weights,-1),0,1)
+        chroma=ref-y[...,None]
+        gain=target/np.maximum(y,1e-8)
+        gain=np.minimum(gain,target/np.maximum(y-ref.min(-1),1e-8))
+        gain=np.minimum(gain,(1-target)/np.maximum(ref.max(-1)-y,1e-8))
+        np.clip(target[...,None]+gain[...,None]*chroma,0,1,out=result[start:stop])
+    run_parallel_rows(len(reference),process)
+    return result

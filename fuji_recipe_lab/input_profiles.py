@@ -17,15 +17,14 @@ class CameraInputProfile:
     floating_camera_rgb: bool
     label: str
 
-# Fixed brightness only, learned on 20 files and checked on 10 other files.
-# Keep corrections tied to an exact model; never inherit by camera brand.
-LEICA_Q343=CameraInputProfile('leica-q3-43-v2',.8421820334636739,True,
-                            'Leica Q3 43 · adjusted exposure')
+# Leica mosaic DNGs benefit from the signed floating-point camera-matrix path.
+# This is a decoding strategy, not a model-specific exposure calibration.
+LEICA_DNG=CameraInputProfile('leica-dng-v1',0.,True,
+                             'Leica DNG · floating color conversion')
 
 def camera_profile(metadata):
     make=str(metadata.get('Make','')).strip().upper()
-    model=str(metadata.get('Model','')).strip().upper()
-    if make.startswith('LEICA') and model=='LEICA Q3 43':return LEICA_Q343
+    if make.startswith('LEICA'):return LEICA_DNG
     return None
 
 
@@ -46,7 +45,7 @@ def normalization_details(metadata,suffix,exposure):
         'color_conversion':'LibRaw camera conversion',
         'profile':profile.key if profile else 'fuji-reference' if is_fuji else 'generic-libraw',
         'label':profile.label if profile else 'Fuji · source recipe' if is_fuji else 'Generic input · uncalibrated',
-        'exposure_method':'fixed camera offset + metadata' if profile else
+        'exposure_method':'fixed camera offset + metadata' if profile and profile.exposure_offset_ev else
             'embedded preview luminance estimate + metadata' if matched else 'metadata only',
         'exposure_is_absolute_calibration':False,'fuji_color_calibrated':False,
         'embedded_pixels_used_in_output':False,

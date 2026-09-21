@@ -1,0 +1,40 @@
+# KŌRA for Windows — evaluation build
+
+Windows 10/11 x64 (Intel or AMD), Microsoft Edge WebView2 Evergreen Runtime,
+and .NET Framework 4.8 are required. Python is bundled; no Python installation
+is needed to run the packaged app. Windows ARM64 is not a native build target.
+
+Extract the entire Kora ZIP to a writable folder, then launch `Kora.exe`.
+Do not run the executable inside the ZIP or separate it from `_internal`.
+The app opens full screen. Use the fullscreen button to return to a window.
+Closing the window stops its local service. This build is not code-signed;
+Windows may display a publisher warning. Only use downloads you trust.
+
+Install the official LUT pack through Setup as on macOS. LUTs and firmware
+are not bundled. Images are processed locally and originals are not modified.
+
+- LUTs: `%LOCALAPPDATA%\Kora\luts`
+- Error logs: `%LOCALAPPDATA%\Kora\Logs\errors.jsonl`
+- Saved UI settings: `%LOCALAPPDATA%\Kora\WebView`
+
+Install WebView2 from https://developer.microsoft.com/microsoft-edge/webview2/.
+ExifTool is optional; if used, install `exiftool.exe` and its supporting files
+on PATH. Adobe RGB export requires a separately installed Adobe RGB (1998)
+ICC profile in the Windows system color-profile folder. sRGB needs no extra profile.
+Cloud photographs must first be made available offline in File Explorer.
+
+## Build on Windows
+
+Use 64-bit Python 3.13 in an isolated environment:
+
+```
+python -m venv .venv-windows
+.venv-windows\Scripts\python -m pip install ".[release,optics]" rawpy==0.27.1 lensfunpy==1.18.0
+.venv-windows\Scripts\python scripts/prepare_release_notices.py
+.venv-windows\Scripts\python -m scripts.build_windows_release
+```
+
+The Windows workflow builds on a real Windows runner, runs tests and a packaged
+server smoke test, and uploads artifacts for review. It does not publish a release
+automatically. A real-user visual check and RAW/export test remain necessary
+before declaring the Windows build production-ready.
