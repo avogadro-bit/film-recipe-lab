@@ -27,7 +27,7 @@ class DesktopTests(unittest.TestCase):
             serve.assert_called_once_with([], 8765, open_browser=False)
 
     def test_desktop_entry_opens_browser_by_default(self):
-        with patch("fuji_recipe_lab.desktop.serve") as serve:
+        with patch.object(desktop.sys, 'platform', 'linux'), patch("fuji_recipe_lab.desktop.serve") as serve:
             self.assertEqual(desktop.main(["--port", "8877"]), 0)
         serve.assert_called_once_with([], 8877, open_browser=True)
 

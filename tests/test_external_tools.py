@@ -11,7 +11,7 @@ from fuji_recipe_lab import raw, optics
 class ExternalToolTests(unittest.TestCase):
     def test_path_takes_priority(self):
         with patch('fuji_recipe_lab.external_tools.shutil.which', return_value='/custom/exiftool') as which:
-            self.assertEqual(find_exiftool(), '/custom/exiftool')
+            self.assertEqual(find_exiftool(), str(Path('/custom/exiftool').resolve()))
             which.assert_called_once_with('exiftool')
 
     def test_macos_fallbacks_with_finder_path(self):

@@ -135,13 +135,16 @@ class GuiServerTests(unittest.TestCase):
                  'warp':{'coefficients':[1,-.1,0,0,0,0],'center':[.4,.55]}}
         recipe=StudioRecipe(lens_distortion='auto')
         request=TileRequest(id=item['id'],recipe=recipe,x=512,y=256,size=128,level=2)
-        with patch('fuji_recipe_lab.optics.inspect_optics',return_value=profile):
+        # This checks regional geometry, not the proprietary LUT contents.
+        with patch('fuji_recipe_lab.optics.inspect_optics',return_value=profile), \
+             patch('fuji_recipe_lab.studio.apply_official',side_effect=lambda pixels,*args:pixels):
             actual=library.render_tile(request)
         self.assertFalse(library.corrected_cache)
         library.tile_cache.clear()
         library.corrected_cache[(item['id'],'auto','off')]=apply_corrections(pixels,profile,'auto')
         # Force the generic full-frame path for a byte-for-byte output comparison.
-        with patch('fuji_recipe_lab.optics.inspect_optics',return_value={**profile,'source':'test-full'}):
+        with patch('fuji_recipe_lab.optics.inspect_optics',return_value={**profile,'source':'test-full'}), \
+             patch('fuji_recipe_lab.studio.apply_official',side_effect=lambda pixels,*args:pixels):
             expected=library.render_tile(request)
         self.assertEqual(actual,expected)
 

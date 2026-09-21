@@ -9,6 +9,7 @@ import errno
 import os
 from pathlib import Path
 import secrets
+import socket
 import sys
 import hashlib
 import tempfile
@@ -953,6 +954,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class StudioHTTPServer(ThreadingHTTPServer):
+    # Windows SO_REUSEADDR can steal an active listener instead of failing.
+    allow_reuse_address = sys.platform != 'win32'
+
+    def server_bind(self):
+        if sys.platform == 'win32':
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
     def handle_error(self, request, client_address):
         record_error('http-worker', sys.exc_info()[1])
 
@@ -961,7 +970,7 @@ def bind_studio_server(port):
     try:
         return StudioHTTPServer(("127.0.0.1", port), Handler)
     except OSError as exc:
-        if exc.errno != errno.EADDRINUSE:
+        if exc.errno != errno.EADDRINUSE and not (sys.platform == 'win32' and getattr(exc, 'winerror', None) in (10013, 10048)):
             raise
         # Let the OS select and reserve a free port atomically.
         return StudioHTTPServer(("127.0.0.1", 0), Handler)
