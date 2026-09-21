@@ -23,11 +23,14 @@ def main(argv=None):
     parser.add_argument("--root", type=Path, action="append", default=[])
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--smoke-report", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
         open_browser = not args.no_browser and os.environ.get("FILM_RECIPE_LAB_NO_BROWSER") != "1"
         if sys.platform == "win32" and open_browser:
             from fuji_recipe_lab.windows_app import run
+            if args.smoke_report:
+                return run(args.root, args.port, smoke_report=args.smoke_report)
             return run(args.root, args.port)
         if sys.platform == "darwin" and getattr(sys, "frozen", False) and open_browser:
             from fuji_recipe_lab.macos_app import run
@@ -40,7 +43,7 @@ def main(argv=None):
         return 0
     except Exception as exc:
         record_crash(exc)
-        if sys.platform == "win32" and not args.no_browser:
+        if sys.platform == "win32" and not args.no_browser and not args.smoke_report:
             from fuji_recipe_lab.windows_app import show_startup_error
             show_startup_error()
         return 2

@@ -1,6 +1,9 @@
 """Windows desktop shell using WebView2; rendering stays in the shared engine."""
 import ctypes
+import json
+from pathlib import Path
 import threading
+import time
 
 from .diagnostics import record_error
 from .gui import serve
@@ -16,7 +19,7 @@ class WindowControls:
             self.window.toggle_fullscreen()
 
 
-def run(roots, port):
+def run(roots, port, smoke_report=None):
     import webview
 
     ready = threading.Event()
@@ -51,10 +54,33 @@ def run(roots, port):
             min_size=(820, 600), fullscreen=True, background_color='#0d100f',
         )
         # Never fall back to the obsolete Internet Explorer renderer.
-        webview.start(gui='edgechromium', private_mode=False, storage_path=str(storage))
+        def smoke_check():
+            try:
+                window = controls.window
+                if not window.events.loaded.wait(30):
+                    raise RuntimeError('WebView2 page did not load')
+                result = {}
+                for _ in range(100):
+                    result = window.evaluate_js("({title:document.title, films:document.querySelector('#film').options.length, grid:!!document.querySelector('#wb-grid')})")
+                    if result and result.get('films') == 10:
+                        break
+                    time.sleep(.1)
+                if result.get('title') != 'KŌRA' or result.get('films') != 10 or not result.get('grid'):
+                    raise RuntimeError(f'Unexpected Windows UI state: {result}')
+                Path(smoke_report).write_text(json.dumps(result), encoding='utf-8')
+            except Exception as exc:
+                state['error'] = exc
+                record_error('windows-ui-smoke', exc)
+            finally:
+                controls.window.destroy()
+
+        webview.start(func=smoke_check if smoke_report else None, gui='edgechromium',
+                      private_mode=False, storage_path=str(storage))
     finally:
         state['server'].shutdown()
         thread.join(timeout=3)
+    if 'error' in state:
+        raise state['error']
     return 0
 
 

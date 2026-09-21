@@ -38,6 +38,11 @@ def main():
         finally:
             process.terminate()
             process.wait(timeout=15)
+        report = Path(directory) / 'ui-report.json'
+        subprocess.run([str(app), '--root', directory, '--smoke-report', str(report)], check=True, timeout=60)
+        result = json.loads(report.read_text(encoding='utf-8'))
+        assert result == {'title': 'KŌRA', 'films': 10, 'grid': True}, result
+        print('Packaged WebView2 UI: OK')
 
 
 if __name__ == '__main__':
