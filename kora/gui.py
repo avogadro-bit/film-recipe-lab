@@ -642,7 +642,7 @@ class Library:
         if missing:
             raise ValueError("One or more selected photos are no longer in the library.")
 
-        archive_path = self.scratch/f"film-recipe-lab-{secrets.token_hex(12)}.zip"
+        archive_path = self.scratch/f"kora-{secrets.token_hex(12)}.zip"
         used_names = set()
         jobs = []
         for index, request in enumerate(requests, 1):
@@ -932,7 +932,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.connection.settimeout(3600)
                 archive = self.server.library.export_jpeg_archive(request.items)
                 try:
-                    return self.send_file(archive, "application/zip", "film-recipe-lab-export.zip")
+                    return self.send_file(archive, "application/zip", "kora-export.zip")
                 finally:
                     archive.unlink(missing_ok=True)
             self.send(404, {"error": "Command not found"})
@@ -980,7 +980,7 @@ def serve(roots, port=8765, open_browser=False, on_ready=None):
     install_hooks()
     if not 1024 <= port <= 65535:
         raise ValueError("Port must be between 1024 and 65535")
-    with tempfile.TemporaryDirectory(prefix="film-recipe-lab-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="kora-") as scratch:
         server = bind_studio_server(port)
         server.daemon_threads = True
         server.session_token = secrets.token_urlsafe(32)
@@ -989,7 +989,7 @@ def serve(roots, port=8765, open_browser=False, on_ready=None):
         session_url = f"http://127.0.0.1:{server.server_port}/#session={server.session_token}"
         if server.server_port != port:
             print(f"Port {port} is already in use. Opening on available port {server.server_port}.", flush=True)
-        print(f"Film Recipe Lab : {session_url}", flush=True)
+        print(f"KŌRA : {session_url}", flush=True)
         print("Local service. Press Ctrl+C to quit. Temporary imports are removed at shutdown.", flush=True)
         if open_browser:
             # Defer browser launch until serve_forever has started accepting requests.

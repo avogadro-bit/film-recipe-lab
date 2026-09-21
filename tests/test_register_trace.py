@@ -1,5 +1,5 @@
 import unittest
-from fuji_recipe_lab.emulation import run_function
+from kora.emulation import run_function
 
 
 class RegisterTraceTests(unittest.TestCase):

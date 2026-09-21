@@ -105,10 +105,10 @@ Depuis le dossier du projet, dans un terminal macOS ordinaire :
 
 ```bash
 # Destination nouvelle : ne remplace pas une extraction précédente
-.venv/bin/python -m fuji_recipe_lab firmware-extract research/firmware/XT4-2.12.DAT research/extracted/xt4-replay
-.venv/bin/python -m fuji_recipe_lab xt4-map research/extracted/xt4-replay
-.venv/bin/python -m fuji_recipe_lab xt4-film-probe research/extracted/xt4-replay/unpacked_00260000.bin
-.venv/bin/python -m fuji_recipe_lab xt4-parameter-probe research/extracted/xt4-replay
+.venv/bin/python -m kora firmware-extract research/firmware/XT4-2.12.DAT research/extracted/xt4-replay
+.venv/bin/python -m kora xt4-map research/extracted/xt4-replay
+.venv/bin/python -m kora xt4-film-probe research/extracted/xt4-replay/unpacked_00260000.bin
+.venv/bin/python -m kora xt4-parameter-probe research/extracted/xt4-replay
 ```
 
 Les deux probes demandent Unicorn ; son JIT ne fonctionne pas dans le bac à sable Codex de cet environnement. `--output nouveau-rapport.json` conserve les résultats. Les binaires et rapports détaillés restent locaux et exclus d’un éventuel dépôt.

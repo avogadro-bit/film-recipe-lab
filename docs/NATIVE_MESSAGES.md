@@ -64,9 +64,9 @@ L’option de recherche `--cfg-feb0` permet d’explorer explicitement une valeu
 ## Reproduction
 
 ```bash
-.venv/bin/python -m fuji_recipe_lab xt4-message-probe research/extracted/xt4-2.12 --output research/reports/message-replay.json
-.venv/bin/python -m fuji_recipe_lab xt4-resource-probe research/extracted/xt4-2.12 '/chemin/DSCF2344.RAF' --with-transport --output research/reports/transport-replay.json
-.venv/bin/python -m fuji_recipe_lab xt4-resource-probe research/extracted/xt4-2.12 '/chemin/DSCF2344.RAF' --with-receiver --output research/reports/receiver-replay.json
+.venv/bin/python -m kora xt4-message-probe research/extracted/xt4-2.12 --output research/reports/message-replay.json
+.venv/bin/python -m kora xt4-resource-probe research/extracted/xt4-2.12 '/chemin/DSCF2344.RAF' --with-transport --output research/reports/transport-replay.json
+.venv/bin/python -m kora xt4-resource-probe research/extracted/xt4-2.12 '/chemin/DSCF2344.RAF' --with-receiver --output research/reports/receiver-replay.json
 ```
 
 Les rapports existants sont immuables. `passed` du probe de réception vérifie l’arrêt précis attendu, la réception et les notifications ; **il ne signifie pas que la tâche ou le développement ont terminé**. Les variantes hypothétiques gardent cette validation à faux lorsqu’elles quittent cette frontière connue.

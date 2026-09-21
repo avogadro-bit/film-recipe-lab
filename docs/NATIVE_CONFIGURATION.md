@@ -68,8 +68,8 @@ Rapports : `xt4-receiver-firmware-config.json`, `xt4-receiver-native-wb-boot-val
 ## Reproduction
 
 ```bash
-.venv/bin/python -m fuji_recipe_lab xt4-cfg-probe research/extracted/xt4-2.12 --output research/reports/config-replay.json
-.venv/bin/python -m fuji_recipe_lab xt4-resource-probe research/extracted/xt4-2.12 '/chemin/photo.RAF' --with-receiver --firmware-config --boot-wb --output research/reports/wb-boot-replay.json
+.venv/bin/python -m kora xt4-cfg-probe research/extracted/xt4-2.12 --output research/reports/config-replay.json
+.venv/bin/python -m kora xt4-resource-probe research/extracted/xt4-2.12 '/chemin/photo.RAF' --with-receiver --firmware-config --boot-wb --output research/reports/wb-boot-replay.json
 ```
 
 `--firmware-config` exclut `--cfg-feb0`, et `--boot-wb` exige `--firmware-config`. Les rapports existants sont immuables. Aucun fichier photo, réglage du boîtier ou comportement de rendu de l’interface n’est modifié.

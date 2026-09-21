@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "film-recipe-lab"
+name = "kora"
 version = "0.2.21"
 description = "Local multi-camera RAW studio with an independent Fujifilm LUT adapter"
 readme = "README.md"
@@ -18,13 +18,13 @@ optics = ["lensfunpy>=1.17,<2"]
 release = ["pyinstaller>=6.22,<7", "pyobjc-framework-Cocoa>=11,<13; sys_platform == 'darwin'", "pywebview>=6.2.1,<7; sys_platform == 'darwin' or sys_platform == 'win32'"]
 
 [project.scripts]
-film-recipe-lab = "fuji_recipe_lab.__main__:main"
+kora = "kora.__main__:main"
 
 [tool.setuptools.package-data]
-fuji_recipe_lab = ["static/*", "luts/*.json"]
+kora = ["static/*", "luts/*.json"]
 
 [tool.setuptools.packages.find]
-include = ["fuji_recipe_lab*"]
+include = ["kora*"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["*.cube", "*.bin", "*.DAT"]

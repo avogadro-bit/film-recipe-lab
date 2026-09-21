@@ -425,7 +425,7 @@ def encode(a,r,preview=False):
     if preview or r.file_type=='jpeg':
         im=Image.fromarray(np.round(a*255).astype(np.uint8))
         im.save(buf,'JPEG',quality=90 if preview else (96 if r.image_quality=='fine' else 82),icc_profile=icc,
-            comment=('Film Recipe Lab: '+('official GFX ETERNA 55 LUT; uncalibrated photo adapter' if r.film in OFFICIAL_FILMS else 'independent artistic look')).encode())
+            comment=('KŌRA: '+('official GFX ETERNA 55 LUT; uncalibrated photo adapter' if r.film in OFFICIAL_FILMS else 'independent artistic look')).encode())
         return buf.getvalue(),'image/jpeg'
     dtype=np.uint16 if r.file_type=='tiff16' else np.uint8
     maximum=65535 if r.file_type=='tiff16' else 255

@@ -7,8 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import numpy as np
-from fuji_recipe_lab.activity import user_activity
-from fuji_recipe_lab.gui import Library
+from kora.activity import user_activity
+from kora.gui import Library
 
 
 class ExportActivityTests(unittest.TestCase):
@@ -36,7 +36,7 @@ class ExportActivityTests(unittest.TestCase):
                 return pixels
             def another():
                 second.set();return lib.full_linear(identifier)
-            with patch('fuji_recipe_lab.gui.decode',side_effect=decode) as decoder,ThreadPoolExecutor(2) as pool:
+            with patch('kora.gui.decode',side_effect=decode) as decoder,ThreadPoolExecutor(2) as pool:
                 first=pool.submit(lib.full_linear,identifier)
                 try:
                     self.assertTrue(entered.wait(1));other=pool.submit(another)

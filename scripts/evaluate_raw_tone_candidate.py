@@ -9,9 +9,9 @@ from functools import lru_cache
 from pathlib import Path
 import numpy as np
 from scipy.optimize import least_squares
-from fuji_recipe_lab import studio
-from fuji_recipe_lab.official_luts import apply_official
-from fuji_recipe_lab.recipe_effects import dynamic_range_compress
+from kora import studio
+from kora.official_luts import apply_official
+from kora.recipe_effects import dynamic_range_compress
 from scripts.fit_online_tones import curve
 from scripts.paired_fuji_validation import ROOT, OUT as BASE, metrics
 

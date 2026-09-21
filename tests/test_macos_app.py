@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from fuji_recipe_lab import macos_app
+from kora import macos_app
 
 
 class MacLifecycleTests(unittest.TestCase):

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .gui import serve
 from .diagnostics import record_error
+from .compatibility import mac_webview_directory
 
 
 class WindowControls:
@@ -39,7 +40,7 @@ def run(roots, port):
             state['error'] = exc
             ready.set()
 
-    thread = threading.Thread(target=worker, name="FilmRecipeLabServer", daemon=True)
+    thread = threading.Thread(target=worker, name="KoraServer", daemon=True)
     thread.start()
     ready.wait()
     if 'error' in state:
@@ -52,7 +53,7 @@ def run(roots, port):
             width=1440, height=900, min_size=(820, 600), fullscreen=True,
             background_color='#0d100f',
         )
-        storage = Path.home() / 'Library' / 'Application Support' / 'Film Recipe Lab' / 'WebView'
+        storage = mac_webview_directory()
         storage.mkdir(parents=True, exist_ok=True)
         webview.start(gui='cocoa', private_mode=False, storage_path=str(storage))
     finally:

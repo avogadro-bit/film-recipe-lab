@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     env:
-      FUJI_RECIPE_LUT_DIR: .ci-absent-fuji-luts
+      KORA_LUT_DIR: .ci-absent-fuji-luts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,7 +24,7 @@ jobs:
       - name: Windows regression tests
         timeout-minutes: 4
         run: python -c "import faulthandler, unittest; faulthandler.dump_traceback_later(120, exit=True); result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover('tests')); raise SystemExit(not result.wasSuccessful())"
-      - run: node --check fuji_recipe_lab/static/app.js
+      - run: node --check kora/static/app.js
       - run: node --test tests/test_film_choices_js.cjs tests/test_diagnostics_js.cjs
       - run: python scripts/prepare_release_notices.py
       - run: python -m scripts.build_windows_release

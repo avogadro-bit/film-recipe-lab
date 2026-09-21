@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from fuji_recipe_lab.white_balance import _execute, INPUT, white_balance_probe
+from kora.white_balance import _execute, INPUT, white_balance_probe
 
 
 class WhiteBalanceGuardTests(unittest.TestCase):

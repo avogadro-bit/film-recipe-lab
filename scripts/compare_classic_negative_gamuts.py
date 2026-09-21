@@ -2,8 +2,8 @@
 import json
 from pathlib import Path
 import numpy as np
-from fuji_recipe_lab import studio
-from fuji_recipe_lab.official_luts import apply_official,interpolate,flog2_encode
+from kora import studio
+from kora.official_luts import apply_official,interpolate,flog2_encode
 from scripts.paired_fuji_validation import metrics
 from scripts.audit_official_classic_negative import primaries_matrix
 OUT=Path('outputs/classic-negative-adapter')

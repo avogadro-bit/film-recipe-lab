@@ -2,7 +2,7 @@
 
 Ces notes décrivent les étapes antérieures ; suivre README.md pour installer la version actuelle.
 
-## 2026-09-16 — Film Recipe Lab 0.2.0 macOS application
+## 2026-09-16 — KŌRA 0.2.0 macOS application
 
 - Added a self-contained macOS `.app`, ZIP, and DMG release build.
 - The packaged application opens its authenticated local session automatically;
@@ -10,7 +10,7 @@ Ces notes décrivent les étapes antérieures ; suivre README.md pour installer 
 - Kept the official LUTs outside the release. First-run Setup downloads from
   Fujifilm or accepts an existing downloaded ZIP, verifies all ten tables, and
   installs them in the user data directory.
-- Added startup crash logging under `~/Library/Logs/Film Recipe Lab/app.log`.
+- Added startup crash logging under `~/Library/Logs/KŌRA/app.log`.
 
 ## 2026-09-15 — GUI setup and grain/DR preview revision 11
 
@@ -39,7 +39,7 @@ Recherche complémentaire : [23 références publiques, mesures des tonalités e
 
 Depuis le changement de direction autorisé par l’utilisateur, le GUI développe réellement les RAF et DNG avec un moteur indépendant. **Classic Negative et neuf autres films utilisent désormais les LUT officielles du GFX ETERNA 55. L’adaptation photo reste non calibrée contre les JPEG Fuji.** Les recettes modifient l’aperçu et peuvent être exportées en JPEG ou TIFF 8/16 bits.
 
-Lancer `Launch Film Recipe Lab.command`, puis ouvrir le lien de session affiché. Le nouveau studio utilise le port **8766** ; un ancien serveur de recherche sur 8765 peut encore être ouvert. Les fichiers iCloud non téléchargés ne sont pas lus.
+Lancer `Launch Kora.command`, puis ouvrir le lien de session affiché. Le nouveau studio utilise le port **8766** ; un ancien serveur de recherche sur 8765 peut encore être ouvert. Les fichiers iCloud non téléchargés ne sont pas lus.
 
 [Audit des paramètres et corrections](docs/PARAMETER_AUDIT.md) · [LUT officielles : pipeline et validation](docs/OFFICIAL_LUT_STUDIO.md) · [Utilisation et couverture des options](docs/GUI.md) · [Architecture et validation du rendu](docs/INDEPENDENT_STUDIO.md).
 
@@ -47,7 +47,7 @@ Le moteur natif de recherche reste séparé et indisponible. Les sections histor
 
 ---
 
-# Film Recipe Lab
+# KŌRA
 
 Projet de recherche pour un équivalent de **FUJIFILM X RAW STUDIO sans boîtier**, avec prise en charge RAF et DNG et exécution du **véritable traitement Fuji**.
 
@@ -89,13 +89,13 @@ Voir [les résultats natifs et leur reproduction](docs/NATIVE_XT4.md), [l’étu
 
 ## Utilisation sur ce Mac
 
-Double-cliquer sur [Launch Film Recipe Lab.command](Launch%20Film%20Recipe%20Lab.command), puis ouvrir le lien affiché dans le terminal. Le lanceur utilise les deux dossiers photo fournis. Un seul service peut utiliser le port 8765 à la fois ; laisser sa fenêtre Terminal ouverte pendant l’utilisation.
+Double-cliquer sur [Launch Kora.command](Launch%20Kora.command), puis ouvrir le lien affiché dans le terminal. Le lanceur utilise les deux dossiers photo fournis. Un seul service peut utiliser le port 8765 à la fois ; laisser sa fenêtre Terminal ouverte pendant l’utilisation.
 
 Ou lancer l’interface manuellement :
 
 ```bash
-cd /chemin/fuji-recipe-lab
-.venv/bin/python -m fuji_recipe_lab gui \
+cd /chemin/kora
+.venv/bin/python -m kora gui \
   --root '/chemin/Photos' \
   --root '/chemin/Photos/Fuji'
 ```
@@ -105,9 +105,9 @@ Le service fonctionne sur `127.0.0.1`, avec un lien de session affiché à chaqu
 Dans le terminal :
 
 ```bash
-cd /chemin/fuji-recipe-lab
-.venv/bin/python -m fuji_recipe_lab status
-.venv/bin/python -m fuji_recipe_lab --help
+cd /chemin/kora
+.venv/bin/python -m kora status
+.venv/bin/python -m kora --help
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
@@ -117,42 +117,42 @@ Dans le bac à sable Codex de ce Mac, les commandes Unicorn ont produit SIGILL ;
 
 ```bash
 # Inventaire : ne déclenche pas le téléchargement des originaux iCloud
-.venv/bin/python -m fuji_recipe_lab inventory "/chemin/Photos" --output outputs/inventory.json
+.venv/bin/python -m kora inventory "/chemin/Photos" --output outputs/inventory.json
 
 # Diagnostic d’un RAW local
-.venv/bin/python -m fuji_recipe_lab probe "/chemin/photo.DNG"
+.venv/bin/python -m kora probe "/chemin/photo.DNG"
 
 # Préparer un jeu d’essai neutre ; le dossier destination doit être nouveau
-.venv/bin/python -m fuji_recipe_lab prepare "/chemin/photo.RAF" outputs/sample
+.venv/bin/python -m kora prepare "/chemin/photo.RAF" outputs/sample
 
 # Inspection du firmware déjà téléchargé localement
-.venv/bin/python -m fuji_recipe_lab firmware-inspect research/firmware/XT4-2.12.DAT
+.venv/bin/python -m kora firmware-inspect research/firmware/XT4-2.12.DAT
 
 # Extraction vers un dossier nouveau
-.venv/bin/python -m fuji_recipe_lab firmware-extract research/firmware/XT4-2.12.DAT research/extracted/xt4-replay
+.venv/bin/python -m kora firmware-extract research/firmware/XT4-2.12.DAT research/extracted/xt4-replay
 
 # Code Fuji réel : noms internes, puis constructeur de paramètres (aucun calcul de pixels)
-.venv/bin/python -m fuji_recipe_lab xt4-film-probe research/extracted/xt4-2.12/unpacked_00260000.bin
-.venv/bin/python -m fuji_recipe_lab xt4-parameter-probe research/extracted/xt4-2.12
-.venv/bin/python -m fuji_recipe_lab xt4-chain-probe research/extracted/xt4-2.12
-.venv/bin/python -m fuji_recipe_lab xt4-threadx-probe research/extracted/xt4-2.12
-.venv/bin/python -m fuji_recipe_lab xt4-runtime-probe research/extracted/xt4-2.12
-.venv/bin/python -m fuji_recipe_lab xt4-sync-probe research/extracted/xt4-2.12
-.venv/bin/python -m fuji_recipe_lab xt4-raw-frontier-probe research/extracted/xt4-2.12
-.venv/bin/python -m fuji_recipe_lab xt4-raf-metadata-probe research/extracted/xt4-2.12 "/chemin/photo.RAF"
-.venv/bin/python -m fuji_recipe_lab xt4-resource-probe research/extracted/xt4-2.12 "/chemin/photo.RAF"
-.venv/bin/python -m fuji_recipe_lab xt4-message-probe research/extracted/xt4-2.12
-.venv/bin/python -m fuji_recipe_lab xt4-resource-probe research/extracted/xt4-2.12 "/chemin/photo.RAF" --with-receiver
+.venv/bin/python -m kora xt4-film-probe research/extracted/xt4-2.12/unpacked_00260000.bin
+.venv/bin/python -m kora xt4-parameter-probe research/extracted/xt4-2.12
+.venv/bin/python -m kora xt4-chain-probe research/extracted/xt4-2.12
+.venv/bin/python -m kora xt4-threadx-probe research/extracted/xt4-2.12
+.venv/bin/python -m kora xt4-runtime-probe research/extracted/xt4-2.12
+.venv/bin/python -m kora xt4-sync-probe research/extracted/xt4-2.12
+.venv/bin/python -m kora xt4-raw-frontier-probe research/extracted/xt4-2.12
+.venv/bin/python -m kora xt4-raf-metadata-probe research/extracted/xt4-2.12 "/chemin/photo.RAF"
+.venv/bin/python -m kora xt4-resource-probe research/extracted/xt4-2.12 "/chemin/photo.RAF"
+.venv/bin/python -m kora xt4-message-probe research/extracted/xt4-2.12
+.venv/bin/python -m kora xt4-resource-probe research/extracted/xt4-2.12 "/chemin/photo.RAF" --with-receiver
 
 # Valider l’infrastructure d’émulation ; instructions synthétiques, pas du code Fuji
-.venv/bin/python -m fuji_recipe_lab emulator-selftest
+.venv/bin/python -m kora emulator-selftest
 
 # Générer une recette puis la valider
-.venv/bin/python -m fuji_recipe_lab recipe --output outputs/recipe.json
-.venv/bin/python -m fuji_recipe_lab recipe outputs/recipe.json
+.venv/bin/python -m kora recipe --output outputs/recipe.json
+.venv/bin/python -m kora recipe outputs/recipe.json
 
 # Comparaison exacte de deux sorties de même taille/type/profil/orientation
-.venv/bin/python -m fuji_recipe_lab compare reference.tiff candidate.tiff
+.venv/bin/python -m kora compare reference.tiff candidate.tiff
 ```
 
 Les rapports existants ne sont pas écrasés : utiliser un nouveau nom pour les exécutions suivantes. Les photos sources ne sont jamais modifiées.

@@ -43,9 +43,9 @@ def matrix(meta):
 def main():
     import json,rawpy
     from pathlib import Path
-    from fuji_recipe_lab.raw import exif
-    from fuji_recipe_lab.studio import resize_float,render,StudioRecipe
-    from fuji_recipe_lab.source_exposure import estimate_reference_ev
+    from kora.raw import exif
+    from kora.studio import resize_float,render,StudioRecipe
+    from kora.source_exposure import estimate_reference_ev
     from scripts.paired_fuji_validation import metrics
     rows=json.loads(Path('research/leica-input/selection.json').read_text());out=[]
     for r in rows:

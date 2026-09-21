@@ -6,13 +6,13 @@ Le code du projet ne confère aucun droit sur les marques Fujifilm, les LUT, les
 
 Source : [page officielle des LUT](https://www.fujifilm-x.com/global/support/download/lut/), archive GFX ETERNA 55 v1.10. La page décrit leur chargement dans un logiciel de montage ; ce projet ne présume pas d’un droit de redistribution et exclut les `.cube` de Git, du wheel et de l’archive source.
 
-Le manifeste du projet contient uniquement leurs noms et SHA-256. L’utilisateur télécharge l’archive séparément, consulte les conditions du fournisseur puis l’installe localement avec `python -m fuji_recipe_lab.lut_install`. L’installateur conserve les octets originaux.
+Le manifeste du projet contient uniquement leurs noms et SHA-256. L’utilisateur télécharge l’archive séparément, consulte les conditions du fournisseur puis l’installe localement avec `python -m kora.lut_install`. L’installateur conserve les octets originaux.
 
 ## Recherche native et balance des blancs
 
 Les firmwares, modules extraits, outils tiers téléchargés et rapports de recherche restent locaux dans `research/`, exclu de Git. Le code du banc décrit des observations et des adresses, mais n’inclut pas les binaires du fabricant.
 
-`fuji_recipe_lab/luts/wb-shifts-xt4.json` contient 38 coefficients numériques de balance des blancs observés dans la configuration du X-T4 2.12. Leur provenance et les limites de l’application RGB sont conservées dans le fichier. Ce sont des données dérivées d’une analyse du firmware, pas une calibration indépendante du X100VI. La licence choisie pour le code original ne s’étend pas automatiquement à des éléments tiers ; cette provenance doit rester visible lors du partage.
+`kora/luts/wb-shifts-xt4.json` contient 38 coefficients numériques de balance des blancs observés dans la configuration du X-T4 2.12. Leur provenance et les limites de l’application RGB sont conservées dans le fichier. Ce sont des données dérivées d’une analyse du firmware, pas une calibration indépendante du X100VI. La licence choisie pour le code original ne s’étend pas automatiquement à des éléments tiers ; cette provenance doit rester visible lors du partage.
 
 ## Dépendances
 

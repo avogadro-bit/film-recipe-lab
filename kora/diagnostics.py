@@ -13,6 +13,7 @@ import uuid
 
 from . import __version__
 from .platform_support import windows_data_directory
+from .compatibility import logs_directory
 
 MAX_BYTES = 2 * 1024 * 1024
 BACKUPS = 3
@@ -29,9 +30,7 @@ CONTEXT_KEYS = {'photo_id', 'film', 'grain', 'grain_size', 'zoom', 'pan_x', 'pan
 def log_path():
     if sys.platform == 'win32':
         return windows_data_directory() / 'Logs' / 'errors.jsonl'
-    root = (Path.home() / 'Library' / 'Logs' / 'Film Recipe Lab' if sys.platform == 'darwin'
-            else Path.home() / '.local' / 'state' / 'film-recipe-lab')
-    return root / 'errors.jsonl'
+    return logs_directory() / 'errors.jsonl'
 
 
 def register_secret(value):

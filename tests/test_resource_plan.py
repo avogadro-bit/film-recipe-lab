@@ -2,13 +2,13 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from fuji_recipe_lab.messaging import output_bytes
-from fuji_recipe_lab.orchestration import orchestrator_probe
-from fuji_recipe_lab.resource_plan import raw_resource_plan, dma_initialization_frontier
-from fuji_recipe_lab.requests_runtime import request_runtime
-from fuji_recipe_lab.dma import descriptor_probe, control_probe, callback_probe, task_flag_attribute_frontier
-from fuji_recipe_lab.task_initialization import task_initialization_probe
-from fuji_recipe_lab.boot_task import boot_task_probe, boot_lock_initialization_probe
+from kora.messaging import output_bytes
+from kora.orchestration import orchestrator_probe
+from kora.resource_plan import raw_resource_plan, dma_initialization_frontier
+from kora.requests_runtime import request_runtime
+from kora.dma import descriptor_probe, control_probe, callback_probe, task_flag_attribute_frontier
+from kora.task_initialization import task_initialization_probe
+from kora.boot_task import boot_task_probe, boot_lock_initialization_probe
 
 
 class ResourcePlanTests(unittest.TestCase):

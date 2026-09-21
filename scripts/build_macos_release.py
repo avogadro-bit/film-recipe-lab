@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 
-from fuji_recipe_lab import __version__
+from kora import __version__
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,7 +58,7 @@ def main():
         work,
         "--distpath",
         app_dist,
-        ROOT / "packaging" / "FilmRecipeLab.spec",
+        ROOT / "packaging" / "KoraMacOS.spec",
     )
 
     app = app_dist / "KŌRA.app"

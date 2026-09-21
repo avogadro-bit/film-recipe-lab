@@ -4,8 +4,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from fuji_recipe_lab.fflz import DecodeError, decompress
-from fuji_recipe_lab.extract import PAYLOAD_BASE, checksum, invert, segments, packed_objects, extract
+from kora.fflz import DecodeError, decompress
+from kora.extract import PAYLOAD_BASE, checksum, invert, segments, packed_objects, extract
 
 
 def packed(tokens, size):
@@ -103,7 +103,7 @@ class ExtractionTests(unittest.TestCase):
             self.assertFalse(destination.exists())
 
     def test_native_probes_reject_unverified_modules_before_execution(self):
-        from fuji_recipe_lab.xt4 import film_probe, parameter_probe
+        from kora.xt4 import film_probe, parameter_probe
         with tempfile.TemporaryDirectory() as directory:
             module = Path(directory)/"unpacked_00260000.bin"
             module.write_bytes(b"unverified")

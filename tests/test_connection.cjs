@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
-const source=fs.readFileSync('fuji_recipe_lab/static/app.js','utf8');
+const source=fs.readFileSync('kora/static/app.js','utf8');
 const nodes=new Map();
 let now=0,response=()=>Promise.reject(new Error('busy'));
 const context=vm.createContext({

@@ -8,8 +8,8 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
 from PIL import Image,ImageCms,ImageDraw
-from fuji_recipe_lab.official_luts import load_lut,interpolate
-from fuji_recipe_lab.studio import srgb_encode,srgb_decode
+from kora.official_luts import load_lut,interpolate
+from kora.studio import srgb_encode,srgb_decode
 from scripts.paired_fuji_validation import metrics
 OUT=Path('outputs/classic-negative-transfer')
 

@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 from scipy.optimize import least_squares
 from scipy.ndimage import gaussian_filter
-from fuji_recipe_lab import studio
+from kora import studio
 from scripts.paired_fuji_validation import ROOT,OUT,metrics
 ORIGINAL_CHROME=studio.chrome_effect
 

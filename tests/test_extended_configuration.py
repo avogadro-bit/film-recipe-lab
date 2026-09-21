@@ -2,10 +2,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from fuji_recipe_lab.configuration import CFG, install_configuration_prefix
-from fuji_recipe_lab.extended_configuration import verified_default_block
-from fuji_recipe_lab.orchestration import orchestrator_probe
-from fuji_recipe_lab.runtime import sparse_page
+from kora.configuration import CFG, install_configuration_prefix
+from kora.extended_configuration import verified_default_block
+from kora.orchestration import orchestrator_probe
+from kora.runtime import sparse_page
 
 
 class ExtendedConfigurationTests(unittest.TestCase):

@@ -9,9 +9,9 @@ from pathlib import Path
 import numpy as np
 import rawpy
 from PIL import Image
-from fuji_recipe_lab import studio
-from fuji_recipe_lab.raw import require_local
-from fuji_recipe_lab.source_exposure import estimate_reference_ev
+from kora import studio
+from kora.raw import require_local
+from kora.source_exposure import estimate_reference_ev
 from scripts.paired_fuji_validation import ROOT, OUT as BASE, metrics
 
 OUT=Path('outputs/recipe-exposure-candidate')

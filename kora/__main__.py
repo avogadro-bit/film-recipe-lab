@@ -18,7 +18,7 @@ def save_or_print(value, path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Film Recipe Lab · local RAW and film-recipe studio")
+    parser = argparse.ArgumentParser(description="KŌRA · local RAW and film-recipe studio")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("gui", help="Open the local RAF/DNG studio with previews and recipe editing")
     p.add_argument("--root", type=Path, action="append", default=[])

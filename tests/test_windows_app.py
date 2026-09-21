@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from fuji_recipe_lab import windows_app, platform_support, desktop, diagnostics, official_luts, raw
+from kora import windows_app, platform_support, desktop, diagnostics, official_luts, raw
 
 
 class WindowsLifecycleTests(unittest.TestCase):
@@ -67,7 +67,7 @@ class WindowsLifecycleTests(unittest.TestCase):
             self.assertEqual(platform_support.windows_data_directory(), Path(directory) / 'Kora')
             self.assertEqual(diagnostics.log_path(), Path(directory) / 'Kora/Logs/errors.jsonl')
             with patch.dict('os.environ', {}, clear=True):
-                with patch('fuji_recipe_lab.official_luts.windows_data_directory', return_value=Path(directory) / 'Kora'):
+                with patch('kora.official_luts.windows_data_directory', return_value=Path(directory) / 'Kora'):
                     self.assertEqual(official_luts.user_lut_directory(), Path(directory) / 'Kora/luts')
 
     def test_windows_cloud_placeholders_are_not_read(self):

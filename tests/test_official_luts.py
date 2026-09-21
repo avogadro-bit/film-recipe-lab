@@ -1,11 +1,11 @@
-from fuji_recipe_lab.official_luts import missing_luts
+from kora.official_luts import missing_luts
 import unittest
 from unittest.mock import patch
 import numpy as np
-from fuji_recipe_lab.official_luts import (
+from kora.official_luts import (
     FILMS, TO_F_GAMUT, flog2_encode, load_lut, interpolate, apply_official,
     lut_worker_count)
-from fuji_recipe_lab.studio import StudioRecipe, render
+from kora.studio import StudioRecipe, render
 
 
 class OfficialLutTests(unittest.TestCase):
@@ -18,7 +18,7 @@ class OfficialLutTests(unittest.TestCase):
         # A 50% gamma-2.2 video code is ~50.39% in sRGB. The previous
         # gamma-2.4 assumption instead produced ~47.25%, a visible error.
         codes=np.array([[[0,.5,1]]],np.float32)
-        with patch('fuji_recipe_lab.official_luts.load_lut',return_value=None), patch('fuji_recipe_lab.official_luts.interpolate',return_value=codes):
+        with patch('kora.official_luts.load_lut',return_value=None), patch('kora.official_luts.interpolate',return_value=codes):
             out=apply_official(np.zeros_like(codes),'classic_negative')
         np.testing.assert_allclose(out,[[[0,.503866782,1]]],atol=1e-6)
 

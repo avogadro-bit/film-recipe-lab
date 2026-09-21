@@ -4,8 +4,8 @@ import argparse
 from pathlib import Path
 import numpy as np
 from PIL import Image,ImageDraw
-from fuji_recipe_lab import studio
-from fuji_recipe_lab.official_luts import FILMS
+from kora import studio
+from kora.official_luts import FILMS
 
 OUT=Path('outputs/leica-input')
 

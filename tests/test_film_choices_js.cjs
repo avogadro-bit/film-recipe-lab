@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-const source=fs.readFileSync(path.join(__dirname,'../fuji_recipe_lab/static/app.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../kora/static/app.js'),'utf8');
 function setup(){
  const menu={children:[],value:'',replaceChildren(){this.children=[];this.value='';},append(o){this.children.push(o);}};
  const context={$:()=>menu,element:(tag,text)=>({tag,text,disabled:false})};

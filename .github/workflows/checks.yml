@@ -11,7 +11,7 @@ jobs:
         python: ['3.11', '3.13']
     runs-on: ${{ matrix.os }}
     env:
-      FUJI_RECIPE_LUT_DIR: .ci-absent-fuji-luts
+      KORA_LUT_DIR: .ci-absent-fuji-luts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,10 +19,10 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install ".[emulation,optics]" build
       - run: python scripts/check_release.py
-      - run: python -m compileall -q fuji_recipe_lab scripts tests
+      - run: python -m compileall -q kora scripts tests
       - run: python -m unittest discover -s tests -v
       - run: python -m build
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check fuji_recipe_lab/static/app.js
+      - run: node --check kora/static/app.js

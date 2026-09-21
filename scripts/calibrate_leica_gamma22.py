@@ -2,8 +2,8 @@
 import json
 from pathlib import Path
 import numpy as np
-from fuji_recipe_lab.studio import _decode_sensor,resize_float,render,StudioRecipe
-from fuji_recipe_lab.source_exposure import estimate_reference_ev
+from kora.studio import _decode_sensor,resize_float,render,StudioRecipe
+from kora.source_exposure import estimate_reference_ev
 
 OUT=Path('outputs/classic-negative-adapter')
 CACHE=Path('research/classic-negative-adapter/leica-float')

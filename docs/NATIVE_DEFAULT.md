@@ -63,8 +63,8 @@ La prochaine étape consiste à retrouver le chemin natif qui réserve cette res
 ## Reproduction et contrôles
 
 ```bash
-.venv/bin/python -m fuji_recipe_lab xt4-cfg-probe research/extracted/xt4-2.12 --output research/reports/default-replay.json
-.venv/bin/python -m fuji_recipe_lab xt4-resource-probe research/extracted/xt4-2.12 '/chemin/photo.RAF' --with-receiver --firmware-config --boot-wb --extended-config --output research/reports/receiver-default-replay.json
+.venv/bin/python -m kora xt4-cfg-probe research/extracted/xt4-2.12 --output research/reports/default-replay.json
+.venv/bin/python -m kora xt4-resource-probe research/extracted/xt4-2.12 '/chemin/photo.RAF' --with-receiver --firmware-config --boot-wb --extended-config --output research/reports/receiver-default-replay.json
 ```
 
 Rapports : `research/reports/xt4-configuration-extended-validated.json` et `research/reports/xt4-receiver-default-validated.json`. `passed` valide le retour WB, les notifications et l’arrêt attendu sur la ressource manquante, **pas le rendu**.

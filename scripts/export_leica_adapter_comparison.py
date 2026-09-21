@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import numpy as np
 from PIL import Image,ImageCms,ImageDraw
-from fuji_recipe_lab import studio,official_luts
+from kora import studio,official_luts
 from scripts.paired_fuji_validation import metrics
 OUT=Path('outputs/classic-negative-adapter')
 OLD_EV=1.0115000581063707

@@ -5,7 +5,7 @@ if [[ ! -x .venv/bin/python ]]; then
   read '?Press Enter to close.'
   exit 1
 fi
-./.venv/bin/python -m fuji_recipe_lab gui --port 8766
+./.venv/bin/python -m kora gui --port 8766
 if (( $? != 0 )); then
   print '\nThe service did not start. Check the message above.'
   read '?Press Enter to close.'

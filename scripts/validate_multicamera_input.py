@@ -4,8 +4,8 @@ import argparse
 from pathlib import Path
 import numpy as np
 from PIL import Image,ImageCms,ImageDraw
-from fuji_recipe_lab import studio
-from fuji_recipe_lab.raw import require_local
+from kora import studio
+from kora.raw import require_local
 OUT=Path('outputs/multicamera-input')
 
 def main():

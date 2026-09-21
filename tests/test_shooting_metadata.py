@@ -4,10 +4,10 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import numpy as np
 import tifffile
-from fuji_recipe_lab.raw import exif
-from fuji_recipe_lab.source_exposure import source_exposure
-from fuji_recipe_lab.raw import normalize_exif
-from fuji_recipe_lab.studio import shooting_settings,StudioRecipe
+from kora.raw import exif
+from kora.source_exposure import source_exposure
+from kora.raw import normalize_exif
+from kora.studio import shooting_settings,StudioRecipe
 
 
 class ShootingMetadataTests(unittest.TestCase):
@@ -18,7 +18,7 @@ class ShootingMetadataTests(unittest.TestCase):
                 extratags=[(271, 's', 0, 'LEICA CAMERA AG', False),
                            (272, 's', 0, 'LEICA M11', False),
                            (50730, '2i', 1, (-1, 2), False)])
-            with patch('fuji_recipe_lab.raw.find_exiftool', return_value=None):
+            with patch('kora.raw.find_exiftool', return_value=None):
                 metadata = exif(path)
             self.assertEqual(metadata['BaselineExposure'], -.5)
             self.assertEqual(metadata['Model'], 'LEICA M11')

@@ -5,7 +5,7 @@ No render tuning: reports scene-wide and equal-colour-cell weighted responses.
 import json
 from pathlib import Path
 import numpy as np
-from fuji_recipe_lab import studio
+from kora import studio
 
 OUT=Path('outputs/format-response')
 W=np.array([.2126,.7152,.0722],np.float32)
@@ -16,7 +16,7 @@ CHANGES={'H-2':{'highlights':-2},'H+4':{'highlights':4},
 
 
 def main(films=False):
-    from fuji_recipe_lab.official_luts import FILMS
+    from kora.official_luts import FILMS
     from PIL import Image,ImageDraw
     changes={f:{'film':f} for f in FILMS if f!='provia'} if films else CHANGES
     recipe=studio.StudioRecipe(film='provia') if films else studio.StudioRecipe()

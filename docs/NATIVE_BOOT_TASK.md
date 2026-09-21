@@ -59,7 +59,7 @@ Pour valider la reproduction exacte, il manque notamment un modèle documenté o
 Le rapport `research/reports/xt4-boot-hardware-validated.json` passe les vérifications des initialisations préalables, de l’arrêt matériel attendu, du parcours de la tâche 86, des deux parcours de création précédents et des 84 cas de contrôle DMA. `passed` signifie que les observations attendues du diagnostic sont conformes, pas que le démarrage ou le rendu a réussi. Le refus de firmware modifié couvre aussi les nouveaux bancs. **68 tests unitaires passent.**
 
 ```bash
-.venv/bin/python -m fuji_recipe_lab xt4-dma-probe research/extracted/xt4-2.12 --control --output research/reports/boot-task-replay.json
+.venv/bin/python -m kora xt4-dma-probe research/extracted/xt4-2.12 --control --output research/reports/boot-task-replay.json
 .venv/bin/python -m unittest discover -s tests -v
 ```
 

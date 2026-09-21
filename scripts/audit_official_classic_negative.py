@@ -4,8 +4,8 @@ import json,hashlib
 from zipfile import ZipFile
 import numpy as np
 from PIL import Image
-from fuji_recipe_lab.official_luts import interpolate,apply_official,flog2_encode,TO_F_GAMUT
-from fuji_recipe_lab.studio import srgb_encode
+from kora.official_luts import interpolate,apply_official,flog2_encode,TO_F_GAMUT
+from kora.studio import srgb_encode
 from scripts.paired_fuji_validation import metrics
 
 ROOT=Path('research/classic-negative-adapter')

@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-const source=fs.readFileSync(path.join(__dirname,'../fuji_recipe_lab/static/diagnostics.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../kora/static/diagnostics.js'),'utf8');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function setup(available=true){
  const store=new Map(),events={},sent=[];

@@ -12,7 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image, ImageOps, ImageDraw
-from fuji_recipe_lab.recipe_effects import chrome_effect
+from kora.recipe_effects import chrome_effect
 
 ROOT = Path('research/reference-tones')
 OUT = Path('outputs/online-reference-audit')

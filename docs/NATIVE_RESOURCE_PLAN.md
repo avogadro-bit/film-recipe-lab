@@ -69,7 +69,7 @@ Cette différence est signalée dans le rapport (`fits_static_capacity: false`).
 ## Validation et suite
 
 ```bash
-.venv/bin/python -m fuji_recipe_lab xt4-resource-probe research/extracted/xt4-2.12 '/chemin/photo.RAF' --with-receiver --firmware-config --boot-wb --extended-config --raw-resource-plan --output research/reports/resource-plan-replay.json
+.venv/bin/python -m kora xt4-resource-probe research/extracted/xt4-2.12 '/chemin/photo.RAF' --with-receiver --firmware-config --boot-wb --extended-config --raw-resource-plan --output research/reports/resource-plan-replay.json
 .venv/bin/python -m unittest discover -s tests -v
 ```
 

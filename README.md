@@ -1,4 +1,4 @@
-# Film Recipe Lab
+# KŌRA
 
 A local RAW studio that works without a connected camera. It develops photographs through an independent photo adapter and the official GFX ETERNA 55 LUTs, which must be installed separately. The interface is in English and starts with PROVIA / Standard.
 
@@ -6,10 +6,10 @@ A local RAW studio that works without a connected camera. It develops photograph
 
 ## macOS application
 
-The GitHub release provides a self-contained **Film Recipe Lab.app** for Apple
+The GitHub release provides a self-contained **KŌRA.app** for Apple
 Silicon Macs running macOS 14 or newer, in ZIP and DMG formats. It does not
-require Python. Open the application and it launches the local studio in the
-default browser. On first launch, **Setup** links to the
+require Python. Open the application and it launches the local studio in its own
+full-screen macOS window. On first launch, **Setup** links to the
 official Fujifilm download and lets the user choose the downloaded GFX ETERNA 55
 ZIP. The ten LUTs are hash-verified and installed locally; they are not bundled or
 redistributed by this project. See [macOS release and Gatekeeper notes](docs/MACOS_RELEASE.md).
@@ -25,7 +25,13 @@ redistributed by this project. See [macOS release and Gatekeeper notes](docs/MAC
 
 ## Installation
 
-Python **3.11 or newer** is required. macOS is the platform tested with real photographs. Linux and Windows have a proposed CI matrix, but no remote CI result has been validated yet.
+Python **3.11 or newer** is required for development. The public application download is currently macOS only.
+
+[Download KŌRA for macOS](https://github.com/avogadro-bit/kora-source/releases/tag/v0.2.21).
+
+The Python module and command are named `kora`. Existing LUT directories and saved
+macOS settings are detected automatically. Legacy identifiers are isolated in
+`kora/compatibility.py` for backwards compatibility; no user data is deleted.
 
 From the repository directory:
 
@@ -51,20 +57,20 @@ On first launch, the **Setup** dialog provides a direct **Download from Fujifilm
 For command-line installation, download **GFX ETERNA 55 v1.10** from the [official Fujifilm LUT page](https://www.fujifilm-x.com/global/support/download/lut/), review its terms, and run:
 
 ```sh
-python -m fuji_recipe_lab.lut_install "/path/to/gfx-eterna-55-3d-lut-v110.zip"
+python -m kora.lut_install "/path/to/gfx-eterna-55-3d-lut-v110.zip"
 ```
 
-The installer compares each table against its expected SHA-256. A different or modified archive is rejected. LUTs remain outside the repository in `~/.local/share/fuji-recipe-lab/luts`. Set `FUJI_RECIPE_LUT_DIR` to use another directory. The application links to Fujifilm's server and does not redistribute or substitute missing films.
+The installer compares each table against its expected SHA-256. A different or modified archive is rejected. LUTs remain outside the repository in `~/.local/share/kora/luts`. Set `KORA_LUT_DIR` to use another directory. The application links to Fujifilm's server and does not redistribute or substitute missing films.
 
 ## Run
 
 ```sh
-python -m fuji_recipe_lab gui --port 8766
+python -m kora gui --port 8766
 ```
 
-Open the **complete session link shown in the terminal**, then choose **Open Folder**. The server listens only on `127.0.0.1`; keep the terminal open. If the requested port is occupied, the application selects and prints an available port. On macOS, `Launch Film Recipe Lab.command` uses the repository's `.venv` environment.
+Open the **complete session link shown in the terminal**, then choose **Open Folder**. The server listens only on `127.0.0.1`; keep the terminal open. If the requested port is occupied, the application selects and prints an available port. On macOS, `Launch Kora.command` uses the repository's `.venv` environment.
 
-To add a starting location: `python -m fuji_recipe_lab gui --root "/path/to/Photos" --port 8766`. Folders are scanned only after explicit selection in the GUI.
+To add a starting location: `python -m kora gui --root "/path/to/Photos" --port 8766`. Folders are scanned only after explicit selection in the GUI.
 
 ## Output dimensions
 
@@ -75,8 +81,8 @@ To add a starting location: `python -m fuji_recipe_lab gui --root "/path/to/Phot
 ```sh
 python -m pip install -e '.[emulation,optics]'
 python -m unittest discover -s tests -v
-python -m compileall -q fuji_recipe_lab scripts tests
-node --check fuji_recipe_lab/static/app.js
+python -m compileall -q kora scripts tests
+node --check kora/static/app.js
 python scripts/check_release.py
 ```
 

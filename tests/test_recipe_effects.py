@@ -1,10 +1,10 @@
-from fuji_recipe_lab.official_luts import missing_luts
+from kora.official_luts import missing_luts
 import unittest
 from unittest.mock import patch
 import numpy as np
 from scipy.ndimage import uniform_filter
-from fuji_recipe_lab.recipe_effects import wb_shift_gains, chrome_effect, dynamic_range_compress, tone_curve, linear_tone_curve, selective_tone_detail, protect_unrecoverable_highlights
-from fuji_recipe_lab.studio import render, StudioRecipe
+from kora.recipe_effects import wb_shift_gains, chrome_effect, dynamic_range_compress, tone_curve, linear_tone_curve, selective_tone_detail, protect_unrecoverable_highlights
+from kora.studio import render, StudioRecipe
 
 
 class RecipeEffectTests(unittest.TestCase):
@@ -125,7 +125,7 @@ class RecipeEffectTests(unittest.TestCase):
         a=np.repeat(np.array([[[1.2],[1.5],[2.]]],np.float32),3,-1)
         # A clipping film makes a display-space edit incapable of distinguishing
         # these three inputs. A pre-film highlight edit must retain their detail.
-        with patch('fuji_recipe_lab.studio.apply_official',side_effect=lambda a,film:np.clip(a,0,1)):
+        with patch('kora.studio.apply_official',side_effect=lambda a,film:np.clip(a,0,1)):
             old=render(a,StudioRecipe())
             recovered=render(a,StudioRecipe(highlights=-100,dynamic_range=400))
         np.testing.assert_array_equal(old,1)
@@ -157,7 +157,7 @@ class RecipeEffectTests(unittest.TestCase):
         self.assertTrue(np.isfinite(recovered).all())
 
     def test_dng_shoulder_has_no_neutrality_boundary_or_tonal_reversal(self):
-        from fuji_recipe_lab.recipe_effects import _unrecoverable_highlight_weight
+        from kora.recipe_effects import _unrecoverable_highlight_weight
         luminance=np.linspace(.1,3,1000,dtype=np.float32)
         source=np.repeat(luminance[None,:,None],3,-1)
         weight=_unrecoverable_highlight_weight(source)
@@ -171,7 +171,7 @@ class RecipeEffectTests(unittest.TestCase):
     def test_neutral_highlight_protection_is_opt_in_for_floating_dng_context(self):
         source=np.full((24,32,3),2,np.float32)
         recipe=StudioRecipe(highlights=-100,noise_reduction=-4)
-        with patch('fuji_recipe_lab.studio.apply_official',side_effect=lambda a,film:np.clip(a,0,1)):
+        with patch('kora.studio.apply_official',side_effect=lambda a,film:np.clip(a,0,1)):
             ordinary=render(source,recipe)
             protected=render(source,recipe,context={'protect_neutral_clipped_highlights':True})
         self.assertTrue(np.all(ordinary<1))
@@ -179,7 +179,7 @@ class RecipeEffectTests(unittest.TestCase):
 
     @unittest.skipIf(missing_luts(), "Official LUT integration: install Fuji assets separately")
     def test_tone_adjustments_keep_official_film_hue_and_raw_luminance(self):
-        from fuji_recipe_lab.official_luts import FILMS
+        from kora.official_luts import FILMS
         weights=np.array([.2126,.7152,.0722],np.float32)
         raw=np.random.default_rng(55).uniform(.02,3,(12,16,3)).astype(np.float32)
         for film in FILMS:
@@ -195,7 +195,7 @@ class RecipeEffectTests(unittest.TestCase):
                 self.assertTrue(np.all(np.sum(base_c*c,-1)>=-1e-7))
 
     def test_color_stabilization_keeps_gray_and_recovered_highlight_detail(self):
-        from fuji_recipe_lab.recipe_effects import preserve_film_hue
+        from kora.recipe_effects import preserve_film_hue
         base=np.ones((1,3,3),np.float32)
         magenta=np.array([[[.9,.4,.8],[.8,.3,.7],[.7,.2,.6]]],np.float32)
         out=preserve_film_hue(base,magenta)

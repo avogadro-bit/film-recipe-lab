@@ -3,9 +3,9 @@ import hashlib
 import tempfile
 import unittest
 
-from fuji_recipe_lab.bootstrap import wb_boot_padding
-from fuji_recipe_lab.configuration import configuration_page, firmware_configuration, CFG
-from fuji_recipe_lab.orchestration import orchestrator_probe
+from kora.bootstrap import wb_boot_padding
+from kora.configuration import configuration_page, firmware_configuration, CFG
+from kora.orchestration import orchestrator_probe
 
 
 class ConfigurationProvenanceTests(unittest.TestCase):

@@ -1,4 +1,4 @@
-from fuji_recipe_lab.official_luts import missing_luts
+from kora.official_luts import missing_luts
 import http.client
 from http.server import ThreadingHTTPServer
 import json
@@ -8,8 +8,8 @@ import threading
 import unittest
 import zipfile
 
-from fuji_recipe_lab.gui import Handler, Library, STATIC, TileRequest, bind_studio_server, host_capacity, output_geometry
-from fuji_recipe_lab.studio import StudioRecipe
+from kora.gui import Handler, Library, STATIC, TileRequest, bind_studio_server, host_capacity, output_geometry
+from kora.studio import StudioRecipe
 
 
 class StaticGuiTests(unittest.TestCase):
@@ -105,9 +105,9 @@ class GuiServerTests(unittest.TestCase):
         item=self.server.library.add(path)
         self.server.library.linear_cache[item['id']]=np.ones((12,18,3),np.float32)
         body=json.dumps({'id':item['id'],'recipe':{}})
-        with patch('fuji_recipe_lab.gui.render_context',return_value={}), \
-             patch('fuji_recipe_lab.gui.render',side_effect=lambda pixels,*args,**kwargs:pixels), \
-             patch('fuji_recipe_lab.gui.encode',return_value=(b'jpeg','image/jpeg')), \
+        with patch('kora.gui.render_context',return_value={}), \
+             patch('kora.gui.render',side_effect=lambda pixels,*args,**kwargs:pixels), \
+             patch('kora.gui.encode',return_value=(b'jpeg','image/jpeg')), \
              patch.object(Handler,'record_export') as recorded:
             client=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=3)
             client.request('POST','/api/export',body,{'X-Fuji-Session':self.server.session_token})
@@ -125,7 +125,7 @@ class GuiServerTests(unittest.TestCase):
     def test_dng_tiles_correct_only_region_and_preserve_full_frame_result(self):
         from unittest.mock import patch
         import numpy as np
-        from fuji_recipe_lab.optics import apply_corrections
+        from kora.optics import apply_corrections
         library=self.server.library
         path=Path(self.scratch.name)/'regional.dng';path.write_bytes(b'raw')
         item=library.add(path)
@@ -136,15 +136,15 @@ class GuiServerTests(unittest.TestCase):
         recipe=StudioRecipe(lens_distortion='auto')
         request=TileRequest(id=item['id'],recipe=recipe,x=512,y=256,size=128,level=2)
         # This checks regional geometry, not the proprietary LUT contents.
-        with patch('fuji_recipe_lab.optics.inspect_optics',return_value=profile), \
-             patch('fuji_recipe_lab.studio.apply_official',side_effect=lambda pixels,*args:pixels):
+        with patch('kora.optics.inspect_optics',return_value=profile), \
+             patch('kora.studio.apply_official',side_effect=lambda pixels,*args:pixels):
             actual=library.render_tile(request)
         self.assertFalse(library.corrected_cache)
         library.tile_cache.clear()
         library.corrected_cache[(item['id'],'auto','off')]=apply_corrections(pixels,profile,'auto')
         # Force the generic full-frame path for a byte-for-byte output comparison.
-        with patch('fuji_recipe_lab.optics.inspect_optics',return_value={**profile,'source':'test-full'}), \
-             patch('fuji_recipe_lab.studio.apply_official',side_effect=lambda pixels,*args:pixels):
+        with patch('kora.optics.inspect_optics',return_value={**profile,'source':'test-full'}), \
+             patch('kora.studio.apply_official',side_effect=lambda pixels,*args:pixels):
             expected=library.render_tile(request)
         self.assertEqual(actual,expected)
 
@@ -153,7 +153,7 @@ class GuiServerTests(unittest.TestCase):
         library=self.server.library
         library.tile_generations['tab']=8
         request=TileRequest(id='unused',recipe=StudioRecipe(),x=0,y=0,view_id='tab',generation=7)
-        with patch('fuji_recipe_lab.gui.decode') as decode:
+        with patch('kora.gui.decode') as decode:
             with self.assertRaisesRegex(ValueError,'Superseded viewport'):
                 library.render_tile(request)
             decode.assert_not_called()
@@ -174,8 +174,8 @@ class GuiServerTests(unittest.TestCase):
         def renderer(region,recipe,**kwargs):
             observed.append((region.shape,kwargs))
             return region
-        with patch('fuji_recipe_lab.gui.render',side_effect=renderer), \
-             patch('fuji_recipe_lab.gui.encode',side_effect=lambda tile,*args,**kwargs:(tile.shape,'image/jpeg')) as encoder:
+        with patch('kora.gui.render',side_effect=renderer), \
+             patch('kora.gui.encode',side_effect=lambda tile,*args,**kwargs:(tile.shape,'image/jpeg')) as encoder:
             shape,mime=self.server.library.render_tile(request)
             again=self.server.library.render_tile(request)
         self.assertEqual((shape,mime),((128,128,3),'image/jpeg'))
@@ -186,8 +186,8 @@ class GuiServerTests(unittest.TestCase):
         self.assertEqual(encoder.call_count,1)
 
         level_two=TileRequest(id=item['id'],recipe=StudioRecipe(noise_reduction=-4),x=128,y=128,size=128,level=2)
-        with patch('fuji_recipe_lab.gui.render',side_effect=lambda region,*args,**kwargs:region), \
-             patch('fuji_recipe_lab.gui.encode',side_effect=lambda tile,*args,**kwargs:(tile.shape,'image/jpeg')):
+        with patch('kora.gui.render',side_effect=lambda region,*args,**kwargs:region), \
+             patch('kora.gui.encode',side_effect=lambda tile,*args,**kwargs:(tile.shape,'image/jpeg')):
             shape,mime=self.server.library.render_tile(level_two)
         self.assertEqual((shape,mime),((116,128,3),'image/jpeg'))
 
@@ -227,11 +227,14 @@ class GuiServerTests(unittest.TestCase):
             payloads=[archive.read(name) for name in archive.namelist()]
         self.assertCountEqual(observed,[(a['id'],-1.0),(b['id'],1.0)])
         self.assertNotEqual(payloads[0],payloads[1])
-        self.assertFalse(list(Path(self.scratch.name).glob('film-recipe-lab-*.zip')))
+        # Receiving the body can precede the handler's finally/unlink on Windows.
+        self.server.shutdown()
+        self.server.server_close()
+        self.assertFalse(list(Path(self.scratch.name).glob('kora-*.zip')))
 
     def test_batch_export_runs_independent_photos_concurrently(self):
         from unittest.mock import patch
-        from fuji_recipe_lab.gui import RenderRequest
+        from kora.gui import RenderRequest
         library=Library([],self.scratch.name,capacity={"cpu_count":8,"physical_memory":16*1024**3,
                                                        "export_workers":2,"thumbnail_workers":4})
         requests=[]
@@ -251,7 +254,7 @@ class GuiServerTests(unittest.TestCase):
         finally:archive.unlink(missing_ok=True)
 
     def test_heavy_batch_reduces_image_workers_to_avoid_memory_pressure(self):
-        from fuji_recipe_lab.gui import RenderRequest
+        from kora.gui import RenderRequest
         library=Library([],self.scratch.name,capacity={"cpu_count":14,"physical_memory":36*1024**3,
                                                        "export_workers":4,"thumbnail_workers":7})
         light=[RenderRequest(id=str(i),recipe=StudioRecipe()) for i in range(4)]
@@ -262,22 +265,22 @@ class GuiServerTests(unittest.TestCase):
 
     def test_batch_export_reuses_active_full_resolution_decode(self):
         from unittest.mock import patch
-        from fuji_recipe_lab.gui import RenderRequest
+        from kora.gui import RenderRequest
         import numpy as np
         path=Path(self.scratch.name)/'cached.DNG';path.write_bytes(b'fixture')
         item=self.server.library.add(path)
         cached=np.ones((12,18,3),np.float32)
         self.server.library.linear_cache[item['id']]=cached
         request=RenderRequest(id=item['id'],recipe=StudioRecipe())
-        with patch('fuji_recipe_lab.gui.decode',side_effect=AssertionError('decode should be reused')), \
-             patch('fuji_recipe_lab.gui.render',side_effect=lambda pixels,*args,**kwargs:pixels) as renderer, \
-             patch('fuji_recipe_lab.gui.encode',return_value=(b'jpeg','image/jpeg')):
+        with patch('kora.gui.decode',side_effect=AssertionError('decode should be reused')), \
+             patch('kora.gui.render',side_effect=lambda pixels,*args,**kwargs:pixels) as renderer, \
+             patch('kora.gui.encode',return_value=(b'jpeg','image/jpeg')):
             self.assertEqual(self.server.library._develop_batch_item(request),(b'jpeg','image/jpeg'))
         self.assertIs(renderer.call_args.args[0],cached)
 
     def test_idle_prefetch_populates_the_same_full_resolution_export_cache(self):
         from unittest.mock import patch
-        from fuji_recipe_lab.gui import RenderRequest
+        from kora.gui import RenderRequest
         import numpy as np
         capacity={"cpu_count":8,"physical_memory":16*1024**3,"export_workers":2,
                   "thumbnail_workers":4,"full_resolution_prefetch":True}
@@ -285,13 +288,13 @@ class GuiServerTests(unittest.TestCase):
         path=Path(self.scratch.name)/'prefetch.DNG';path.write_bytes(b'fixture')
         item=library.add(path);pixels=np.ones((12,18,3),np.float32)
         request=RenderRequest(id=item['id'],recipe=StudioRecipe())
-        with patch('fuji_recipe_lab.gui.decode',return_value=pixels) as decoder:
+        with patch('kora.gui.decode',return_value=pixels) as decoder:
             self.assertTrue(library.prefetch(item['id']))
         decoder.assert_called_once_with(Path(item['path']),preview=False)
-        with patch('fuji_recipe_lab.gui.decode',side_effect=AssertionError('decode should be reused')), \
-             patch('fuji_recipe_lab.gui.source_details',return_value={}), \
-             patch('fuji_recipe_lab.gui.render',side_effect=lambda value,*args,**kwargs:value), \
-             patch('fuji_recipe_lab.gui.encode',return_value=(b'jpeg','image/jpeg')):
+        with patch('kora.gui.decode',side_effect=AssertionError('decode should be reused')), \
+             patch('kora.gui.source_details',return_value={}), \
+             patch('kora.gui.render',side_effect=lambda value,*args,**kwargs:value), \
+             patch('kora.gui.encode',return_value=(b'jpeg','image/jpeg')):
             self.assertEqual(library.develop(request,export=True),(b'jpeg','image/jpeg'))
 
     def test_idle_prefetch_is_disabled_on_memory_constrained_hosts(self):
@@ -313,9 +316,9 @@ class GuiServerTests(unittest.TestCase):
     def test_optics_are_applied_to_preview_and_export_without_mutating_cache(self):
         from unittest.mock import patch
         import numpy as np
-        from fuji_recipe_lab.gui import RenderRequest
-        from fuji_recipe_lab.studio import StudioRecipe
-        from fuji_recipe_lab.optics import apply_corrections
+        from kora.gui import RenderRequest
+        from kora.studio import StudioRecipe
+        from kora.optics import apply_corrections
         path=Path(self.scratch.name)/'geometry.DNG';path.write_bytes(b'fixture')
         item=self.server.library.add(path)
         a=np.random.default_rng(10).uniform(0,3,(48,64,3)).astype(np.float32)
@@ -324,10 +327,10 @@ class GuiServerTests(unittest.TestCase):
                  'warp':{'center':[.5,.5],'coefficients':[1,-.1,0,0,0,0]}}
         expected=apply_corrections(a,profile,'auto')
         request=RenderRequest(id=item['id'],recipe=StudioRecipe(lens_distortion='auto'))
-        with patch('fuji_recipe_lab.optics.inspect_optics',return_value=profile), \
-             patch('fuji_recipe_lab.gui.decode',return_value=a.copy()) as decoder, \
-             patch('fuji_recipe_lab.gui.render',side_effect=lambda pixels,*args,**kwargs:pixels) as renderer, \
-             patch('fuji_recipe_lab.gui.encode',return_value=(b'encoded','image/jpeg')):
+        with patch('kora.optics.inspect_optics',return_value=profile), \
+             patch('kora.gui.decode',return_value=a.copy()) as decoder, \
+             patch('kora.gui.render',side_effect=lambda pixels,*args,**kwargs:pixels) as renderer, \
+             patch('kora.gui.encode',return_value=(b'encoded','image/jpeg')):
             for export in (False,True):
                 self.server.library.develop(request,export=export)
                 np.testing.assert_allclose(renderer.call_args.args[0],expected)
@@ -338,14 +341,14 @@ class GuiServerTests(unittest.TestCase):
     def test_interactive_preview_uses_reduced_decode_without_filling_full_cache(self):
         from unittest.mock import patch
         import numpy as np
-        from fuji_recipe_lab.gui import RenderRequest
-        from fuji_recipe_lab.studio import StudioRecipe
+        from kora.gui import RenderRequest
+        from kora.studio import StudioRecipe
         path=Path(self.scratch.name)/'fast.DNG';path.write_bytes(b'fixture')
         item=self.server.library.add(path);pixels=np.ones((32,48,3),np.float32)
         request=RenderRequest(id=item['id'],recipe=StudioRecipe(),quality='interactive')
-        with patch('fuji_recipe_lab.gui.decode',return_value=pixels) as decoder, \
-             patch('fuji_recipe_lab.gui.render',side_effect=lambda *args,**kwargs:self._assert_decoder_released(pixels)), \
-             patch('fuji_recipe_lab.gui.encode',return_value=(b'preview','image/jpeg')):
+        with patch('kora.gui.decode',return_value=pixels) as decoder, \
+             patch('kora.gui.render',side_effect=lambda *args,**kwargs:self._assert_decoder_released(pixels)), \
+             patch('kora.gui.encode',return_value=(b'preview','image/jpeg')):
             self.server.library.develop(request)
         decoder.assert_called_once_with(Path(item['path']),preview=True)
         self.assertNotIn(item['id'],self.server.library.linear_cache)
@@ -359,8 +362,8 @@ class GuiServerTests(unittest.TestCase):
     def test_interactive_edit_overtakes_full_resolution_render(self):
         from unittest.mock import patch
         import numpy as np
-        from fuji_recipe_lab.gui import RenderRequest
-        from fuji_recipe_lab.studio import StudioRecipe
+        from kora.gui import RenderRequest
+        from kora.studio import StudioRecipe
         path=Path(self.scratch.name)/'overtake.DNG';path.write_bytes(b'fixture')
         item=self.server.library.add(path)
         full=np.ones((64,96,3),np.float32)
@@ -377,9 +380,9 @@ class GuiServerTests(unittest.TestCase):
 
         full_request=RenderRequest(id=item['id'],recipe=StudioRecipe(),quality='full')
         quick_request=RenderRequest(id=item['id'],recipe=StudioRecipe(),quality='interactive')
-        with patch('fuji_recipe_lab.gui.decode',return_value=reduced), \
-             patch('fuji_recipe_lab.gui.render',side_effect=renderer), \
-             patch('fuji_recipe_lab.gui.encode',return_value=(b'image','image/jpeg')):
+        with patch('kora.gui.decode',return_value=reduced), \
+             patch('kora.gui.render',side_effect=renderer), \
+             patch('kora.gui.encode',return_value=(b'image','image/jpeg')):
             worker=threading.Thread(target=self.server.library.develop,args=(full_request,))
             worker.start();self.assertTrue(started.wait(1))
             quick=threading.Thread(target=self.server.library.develop,args=(quick_request,))
@@ -390,7 +393,7 @@ class GuiServerTests(unittest.TestCase):
     def test_export_pauses_new_source_detail_renders(self):
         from unittest.mock import patch
         import numpy as np
-        from fuji_recipe_lab.gui import RenderRequest
+        from kora.gui import RenderRequest
         path=Path(self.scratch.name)/'priority.DNG';path.write_bytes(b'fixture')
         item=self.server.library.add(path);pixels=np.ones((360,540,3),np.float32)
         self.server.library.linear_cache[item['id']]=pixels
@@ -401,8 +404,8 @@ class GuiServerTests(unittest.TestCase):
             return source
         request=RenderRequest(id=item['id'],recipe=StudioRecipe())
         tile=TileRequest(id=item['id'],recipe=StudioRecipe(),x=0,y=0,size=128)
-        with patch('fuji_recipe_lab.gui.render',side_effect=renderer), \
-             patch('fuji_recipe_lab.gui.encode',return_value=(b'image','image/jpeg')):
+        with patch('kora.gui.render',side_effect=renderer), \
+             patch('kora.gui.encode',return_value=(b'image','image/jpeg')):
             worker=threading.Thread(target=self.server.library.develop,args=(request,True))
             worker.start();self.assertTrue(started.wait(1))
             with self.assertRaisesRegex(ValueError,'paused during export'):
@@ -440,7 +443,7 @@ class GuiServerTests(unittest.TestCase):
     def setUp(self):
         self.scratch = tempfile.TemporaryDirectory()
         from unittest.mock import patch
-        self.log_patch = patch('fuji_recipe_lab.diagnostics.log_path', return_value=Path(self.scratch.name)/'errors.jsonl')
+        self.log_patch = patch('kora.diagnostics.log_path', return_value=Path(self.scratch.name)/'errors.jsonl')
         self.log_patch.start()
         self.addCleanup(self.log_patch.stop)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -569,8 +572,8 @@ class GuiServerTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(),b'synthetic ZIP fixture')
             observed.append(path)
         engine={'missing_luts':[]}
-        with patch('fuji_recipe_lab.gui.install_archive',side_effect=install), \
-             patch('fuji_recipe_lab.gui.studio_status',return_value=engine):
+        with patch('kora.gui.install_archive',side_effect=install), \
+             patch('kora.gui.studio_status',return_value=engine):
             code,data=self.request('/api/luts/install?name=official.zip','POST',b'synthetic ZIP fixture',
                                    {'Content-Type':'application/zip'})
         self.assertEqual(code,201)
@@ -584,7 +587,7 @@ class GuiServerTests(unittest.TestCase):
         from unittest.mock import patch
         folder = Path(self.scratch.name)/'extracted-luts'
         folder.mkdir()
-        with patch('fuji_recipe_lab.gui.install_archive') as install, patch('fuji_recipe_lab.gui.studio_status', return_value={'missing_luts':[]}):
+        with patch('kora.gui.install_archive') as install, patch('kora.gui.studio_status', return_value={'missing_luts':[]}):
             code, data = self.request('/api/luts/install', 'POST', json.dumps({'path':str(folder)}), {'Content-Type':'application/json'})
         self.assertEqual(code, 201)
         self.assertTrue(data['installed'])

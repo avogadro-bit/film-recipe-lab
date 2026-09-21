@@ -1,6 +1,6 @@
-# Film Recipe Lab GUI
+# KŌRA GUI
 
-Start the application with `Launch Film Recipe Lab.command`, or run `python -m fuji_recipe_lab gui --port 8766`. Open the complete link printed in the terminal; its session fragment grants access to the local server. If port 8766 is occupied, the terminal prints a new address on an available port.
+Start the application with `Launch Kora.command`, or run `python -m kora gui --port 8766`. Open the complete link printed in the terminal; its session fragment grants access to the local server. If port 8766 is occupied, the terminal prints a new address on an available port.
 
 The ten films marked **Fuji LUT** use official GFX ETERNA 55 tables. Other films remain independent interpretations. See the [pipeline and limits](OFFICIAL_LUT_STUDIO.md).
 

@@ -6,8 +6,8 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_STORED
 import numpy as np
 from PIL import Image, ImageCms
-from fuji_recipe_lab import studio
-from fuji_recipe_lab.recipe_effects import preserve_film_hue
+from kora import studio
+from kora.recipe_effects import preserve_film_hue
 from scripts.compare_photo_profile import photo
 
 OUT=Path('outputs/photo-profile-candidate/HD')

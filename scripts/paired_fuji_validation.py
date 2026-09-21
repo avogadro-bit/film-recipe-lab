@@ -8,8 +8,8 @@ from PIL import Image,ImageOps,ImageDraw
 import cv2
 from scipy.ndimage import gaussian_filter
 from skimage.color import rgb2lab,deltaE_ciede2000
-from fuji_recipe_lab.raw import require_local
-from fuji_recipe_lab.studio import decode,source_details,render,StudioRecipe,shooting_settings,resize_float
+from kora.raw import require_local
+from kora.studio import decode,source_details,render,StudioRecipe,shooting_settings,resize_float
 ROOT=Path('research/paired-validation')
 OUT=Path('outputs/paired-fuji-validation')
 

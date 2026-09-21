@@ -3,8 +3,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import numpy as np
-from fuji_recipe_lab.source_exposure import source_exposure, estimate_reference_ev
-from fuji_recipe_lab.studio import decode, _preview_source, _decode_sensor
+from kora.source_exposure import source_exposure, estimate_reference_ev
+from kora.studio import decode, _preview_source, _decode_sensor
 
 
 class SourceExposureTests(unittest.TestCase):
@@ -15,9 +15,9 @@ class SourceExposureTests(unittest.TestCase):
         self.assertTrue(profile['floating_camera_rgb'])
         self.assertNotIn('fixed_camera_exposure',profile)
         _preview_source.cache_clear();a=np.full((3,4,3),.2,np.float32)
-        with patch('fuji_recipe_lab.studio.exif',return_value=metadata), \
-             patch('fuji_recipe_lab.studio._decode_sensor',return_value=(a,np.full_like(a,.3))) as decoder, \
-             patch('fuji_recipe_lab.studio.estimate_reference_ev',return_value={'reference_ev':.5,'reference_matched':True}) as estimate:
+        with patch('kora.studio.exif',return_value=metadata), \
+             patch('kora.studio._decode_sensor',return_value=(a,np.full_like(a,.3))) as decoder, \
+             patch('kora.studio.estimate_reference_ev',return_value={'reference_ev':.5,'reference_matched':True}) as estimate:
             pixels,info=_preview_source(Path('leica.DNG'),0,0)
             estimate.assert_called_once()
             self.assertTrue(decoder.call_args.kwargs['floating_camera_rgb'])
@@ -34,7 +34,7 @@ class SourceExposureTests(unittest.TestCase):
         raw.raw_pattern=np.array([[0,1],[3,2]])
         raw.sizes.flip=0
         raw.extract_thumb.side_effect=OSError('no thumbnail')
-        with tempfile.TemporaryDirectory() as tmp,patch('fuji_recipe_lab.studio.rawpy.imread',return_value=raw):
+        with tempfile.TemporaryDirectory() as tmp,patch('kora.studio.rawpy.imread',return_value=raw):
             path=Path(tmp)/'leica.dng';path.write_bytes(b'fixture')
             preview,_=_decode_sensor(path,True,True)
             full,_=_decode_sensor(path,False,True)
@@ -57,10 +57,10 @@ class SourceExposureTests(unittest.TestCase):
             develop(linear)
             return {'reference_ev':0.,'reference_matched':True}
         _preview_source.cache_clear()
-        with patch('fuji_recipe_lab.studio.exif',return_value=metadata), \
-             patch('fuji_recipe_lab.studio._decode_sensor',return_value=(a,a.copy())), \
-             patch('fuji_recipe_lab.studio.estimate_reference_ev',side_effect=estimate), \
-             patch('fuji_recipe_lab.studio.render',return_value=a) as render:
+        with patch('kora.studio.exif',return_value=metadata), \
+             patch('kora.studio._decode_sensor',return_value=(a,a.copy())), \
+             patch('kora.studio.estimate_reference_ev',side_effect=estimate), \
+             patch('kora.studio.render',return_value=a) as render:
             _preview_source(Path('capture.RAF'),0,0)
             recipe=render.call_args.args[1]
             self.assertEqual((recipe.film,recipe.highlights,recipe.whites,recipe.shadows,recipe.blacks,recipe.dynamic_range),
@@ -88,7 +88,7 @@ class SourceExposureTests(unittest.TestCase):
         raw.extract_thumb.side_effect=OSError('no preview')
         raw.postprocess.return_value=np.full((2,3,3),4096,np.uint16)
         _preview_source.cache_clear()
-        with tempfile.TemporaryDirectory() as tmp,patch('fuji_recipe_lab.studio.exif',return_value={'BaselineExposure':2}),patch('fuji_recipe_lab.studio.rawpy.imread',return_value=raw):
+        with tempfile.TemporaryDirectory() as tmp,patch('kora.studio.exif',return_value={'BaselineExposure':2}),patch('kora.studio.rawpy.imread',return_value=raw):
             path=Path(tmp)/'test.dng';path.write_bytes(b'fixture')
             for preview in (True,False):
                 a=decode(path,preview=preview)

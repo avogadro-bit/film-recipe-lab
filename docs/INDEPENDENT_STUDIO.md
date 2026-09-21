@@ -2,7 +2,7 @@
 
 # Moteur indépendant v1
 
-`fuji_recipe_lab/studio.py` effectue le décodage LibRaw en sRGB linéaire, la balance caméra, une adaptation RGB relative pour les réglages WB, l’exposition et la compression des hautes lumières, puis les transformations de style et les effets spatiaux. Les coefficients sont des choix artistiques explicites, pas des tables Fuji récupérées ni un apprentissage sur références. Classic Negative modifie contraste, saturation, verts, rouges et teintes des ombres/hautes lumières.
+`kora/studio.py` effectue le décodage LibRaw en sRGB linéaire, la balance caméra, une adaptation RGB relative pour les réglages WB, l’exposition et la compression des hautes lumières, puis les transformations de style et les effets spatiaux. Les coefficients sont des choix artistiques explicites, pas des tables Fuji récupérées ni un apprentissage sur références. Classic Negative modifie contraste, saturation, verts, rouges et teintes des ombres/hautes lumières.
 
 Le moteur natif reste dans `engine.py` ; ses refus de rendu exact sont conservés. `StudioRecipe` étend le schéma historique sans modifier ses valeurs et validations pour la recherche native.
 

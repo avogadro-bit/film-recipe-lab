@@ -43,7 +43,7 @@ Il faut **36 coefficients de 16 bits**, lus en little-endian par `0x01263bf4`. L
 Rapport : `research/reports/xt4-wb-isolated-first.json`.
 
 ```bash
-.venv/bin/python -m fuji_recipe_lab xt4-wb-probe research/extracted/xt4-2.12 --output research/reports/wb-replay.json
+.venv/bin/python -m kora xt4-wb-probe research/extracted/xt4-2.12 --output research/reports/wb-replay.json
 ```
 
 Les rapports existants ne sont pas écrasés. Quatre tests supplémentaires contrôlent les garde-fous : champ défini accessible, remplissage inaccessible, calibration absente inaccessible et firmware incorrect rejeté avant exécution.

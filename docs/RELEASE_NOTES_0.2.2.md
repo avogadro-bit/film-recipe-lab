@@ -1,4 +1,4 @@
-# Film Recipe Lab 0.2.2
+# KŌRA 0.2.2
 
 Setup now accepts the official GFX ETERNA 55 v1.10 ZIP or an extracted folder.
 Use Choose Downloaded ZIP or Choose Extracted Folder. The folder browser also

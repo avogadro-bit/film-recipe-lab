@@ -2,9 +2,9 @@ import unittest
 from pathlib import Path
 import tempfile
 import numpy as np
-from fuji_recipe_lab.input_profiles import camera_profile,validate_linear_input,normalization_details
-from fuji_recipe_lab.gui import Library
-from fuji_recipe_lab.source_exposure import source_exposure
+from kora.input_profiles import camera_profile,validate_linear_input,normalization_details
+from kora.gui import Library
+from kora.source_exposure import source_exposure
 
 class CommonInputTests(unittest.TestCase):
     def test_camera_profile_is_scoped_to_leica_make(self):

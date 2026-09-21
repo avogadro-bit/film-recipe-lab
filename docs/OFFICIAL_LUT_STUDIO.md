@@ -37,7 +37,7 @@ est exactement celui de notre adaptateur + LUT, sans correction artistique.
 
 ## Provenance et limites
 
-Les fichiers sont dans `fuji_recipe_lab/luts/`, accompagnés d’un manifeste avec
+Les fichiers sont dans `kora/luts/`, accompagnés d’un manifeste avec
 les noms originaux et SHA-256. Le chargement vérifie leur intégrité ; une LUT
 manquante ou modifiée provoque une erreur, sans substitution silencieuse.
 Ils restent attribués à FUJIFILM ; leur téléchargement public n’est pas présenté

@@ -6,9 +6,9 @@ from pathlib import Path
 import time
 import numpy as np
 from PIL import Image,ImageDraw
-from fuji_recipe_lab import studio
-from fuji_recipe_lab.optics import inspect_optics,apply_corrections
-from fuji_recipe_lab.raw import require_local
+from kora import studio
+from kora.optics import inspect_optics,apply_corrections
+from kora.raw import require_local
 
 
 def checksum(path):

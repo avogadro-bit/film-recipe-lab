@@ -98,7 +98,7 @@ L’attribut zéro utilisé dans l’ancien destinataire RAW demeure donc une hy
 ## Reproduction et portée
 
 ```bash
-.venv/bin/python -m fuji_recipe_lab xt4-dma-probe research/extracted/xt4-2.12 --control --output research/reports/dma-control-replay.json
+.venv/bin/python -m kora xt4-dma-probe research/extracted/xt4-2.12 --control --output research/reports/dma-control-replay.json
 .venv/bin/python -m unittest discover -s tests -v
 ```
 

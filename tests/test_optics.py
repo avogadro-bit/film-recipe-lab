@@ -2,7 +2,7 @@ import struct
 import unittest
 from unittest.mock import patch
 import numpy as np
-from fuji_recipe_lab.optics import parse_warp, warp_coordinates, apply_corrections, lensfun_match, database
+from kora.optics import parse_warp, warp_coordinates, apply_corrections, lensfun_match, database
 
 
 def opcode(coeff=(1,0,0,0,0,0),center=(.5,.5)):
@@ -12,7 +12,7 @@ def opcode(coeff=(1,0,0,0,0,0),center=(.5,.5)):
 
 class OpticsTests(unittest.TestCase):
     def test_regional_dng_correction_matches_full_frame_and_sparse_statistics(self):
-        from fuji_recipe_lab.optics import dng_corrected_region
+        from kora.optics import dng_corrected_region
         source=np.random.default_rng(8).uniform(-.2,4,(83,117,3)).astype(np.float32)
         for coefficient in (-.1,.08):
             for orientation,k in ((1,0),(3,2),(6,3),(8,1)):
@@ -64,7 +64,7 @@ class OpticsTests(unittest.TestCase):
     def test_unknown_profile_does_not_guess_or_change_pixels(self):
         a=np.ones((8,9,3),np.float32)
         self.assertIs(apply_corrections(a,{'distortion':False,'vignetting':False},'auto','auto'),a)
-        with patch('fuji_recipe_lab.optics.database',return_value=None):
+        with patch('kora.optics.database',return_value=None):
             self.assertIsNone(lensfun_match({'Make':'Unknown','Model':'Unknown'}))
 
     def test_lensfun_profile_corrects_vignetting_without_clipping_hdr(self):

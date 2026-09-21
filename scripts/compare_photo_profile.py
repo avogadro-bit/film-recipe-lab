@@ -10,8 +10,8 @@ import numpy as np
 from scipy.ndimage import map_coordinates
 from scipy.optimize import brentq
 from PIL import Image,ImageDraw
-from fuji_recipe_lab import studio
-from fuji_recipe_lab.recipe_effects import preserve_film_hue
+from kora import studio
+from kora.recipe_effects import preserve_film_hue
 from scripts.paired_fuji_validation import metrics
 
 ROOT=Path('research/photo-profile-candidate')

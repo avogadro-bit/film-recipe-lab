@@ -5,8 +5,8 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
-from fuji_recipe_lab import diagnostics as d
-from fuji_recipe_lab.gui import TileRequest
+from kora import diagnostics as d
+from kora.gui import TileRequest
 
 
 class DiagnosticsTests(unittest.TestCase):

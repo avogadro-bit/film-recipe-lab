@@ -1,6 +1,6 @@
 # macOS application release
 
-Film Recipe Lab 0.2.0 can be distributed as a self-contained macOS application.
+KŌRA can be distributed as a self-contained macOS application.
 The application includes Python and the required RAW-processing libraries; users
 do not need to install Python or create a virtual environment.
 
@@ -8,9 +8,9 @@ do not need to install Python or create a virtual environment.
 
 1. On an Apple Silicon Mac running macOS 14 or newer, download the ARM64 DMG
    and open it.
-2. Drag **Film Recipe Lab** into **Applications**.
+2. Drag **KŌRA** into **Applications**.
 3. Open the application. It starts a local service bound only to `127.0.0.1`
-   and opens the complete session link in the default browser.
+   and opens its own full-screen macOS window.
 4. On first launch, use **Download from Fujifilm**, then **Choose Downloaded ZIP**.
    The application accepts GFX ETERNA 55 v1.10 only, verifies all ten LUT hashes,
    installs them in the user's data directory, and deletes its temporary copy.

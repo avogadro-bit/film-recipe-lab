@@ -5,17 +5,17 @@ import struct
 import tempfile
 from unittest.mock import patch
 
-from fuji_recipe_lab.runtime import calendar_regions, sparse_page
-from fuji_recipe_lab.synchronization import object_addresses
-from fuji_recipe_lab.requests_runtime import snapshot_native_ram
-from fuji_recipe_lab.raf_metadata import metadata_entries, read_metadata
-from fuji_recipe_lab.resources import resource_inputs
+from kora.runtime import calendar_regions, sparse_page
+from kora.synchronization import object_addresses
+from kora.requests_runtime import snapshot_native_ram
+from kora.raf_metadata import metadata_entries, read_metadata
+from kora.resources import resource_inputs
 
 
 class RuntimeInputTests(unittest.TestCase):
     def test_resource_probe_rejects_changed_metadata_before_reuse(self):
-        with patch("fuji_recipe_lab.resources.metadata_probe", return_value={"passed": True, "source": {"metadata_sha256": "before"}}), \
-             patch("fuji_recipe_lab.resources.read_metadata", return_value=(b"", [], {"metadata_sha256": "after"})):
+        with patch("kora.resources.metadata_probe", return_value={"passed": True, "source": {"metadata_sha256": "before"}}), \
+             patch("kora.resources.read_metadata", return_value=(b"", [], {"metadata_sha256": "after"})):
             with self.assertRaisesRegex(ValueError, "changed"):
                 resource_inputs(Path("unused"), Path("unused.RAF"), [])
 

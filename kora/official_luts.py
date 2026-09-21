@@ -12,6 +12,7 @@ import json
 import os
 import sys
 from .platform_support import windows_data_directory
+from .compatibility import lut_directory, lut_override
 import numpy as np
 from scipy.ndimage import map_coordinates
 
@@ -22,15 +23,16 @@ LUT_DISPLAY_GAMMA = 2.2
 
 
 def user_lut_directory():
-    default = windows_data_directory() / 'luts' if sys.platform == 'win32' else Path.home()/'.local/share/fuji-recipe-lab/luts'
-    return Path(os.environ.get('FUJI_RECIPE_LUT_DIR', default)).expanduser()
+    default = windows_data_directory() / 'luts' if sys.platform == 'win32' else lut_directory()
+    override = lut_override()
+    return Path(override if override is not None else default).expanduser()
 
 
 def lut_path(film):
     name=MANIFEST['files'][film]['file']
     user_path=user_lut_directory()/name
     # An explicit override is isolated (useful for portable installations/tests).
-    if 'FUJI_RECIPE_LUT_DIR' in os.environ or user_path.is_file():
+    if lut_override() is not None or user_path.is_file():
         return user_path
     return ROOT/name  # Existing development installations remain compatible.
 
@@ -54,7 +56,7 @@ def load_lut(film):
     info=MANIFEST['files'][film]
     path=lut_path(film)
     if not path.is_file():
-        raise ValueError('Fuji LUT missing. Download the GFX ETERNA 55 v1.10 ZIP from Fuji, then run: python -m fuji_recipe_lab.lut_install path/archive.zip')
+        raise ValueError('Fuji LUT missing. Download the GFX ETERNA 55 v1.10 ZIP from Fuji, then run: python -m kora.lut_install path/archive.zip')
     raw=path.read_bytes()
     if hashlib.sha256(raw).hexdigest()!=info['sha256']:
         raise ValueError(f'Official LUT has been modified: {film}')

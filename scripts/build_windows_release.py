@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from PIL import Image, ImageDraw
-from fuji_recipe_lab import __version__
+from kora import __version__
 from scripts.build_macos_release import digest, reset_directory
 
 ROOT = Path(__file__).resolve().parents[1]

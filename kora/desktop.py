@@ -3,9 +3,10 @@ import argparse
 import os
 from pathlib import Path
 import sys
-from fuji_recipe_lab import diagnostics
+from kora import diagnostics
 
-from fuji_recipe_lab.gui import serve
+from kora.gui import serve
+from kora.compatibility import browser_disabled
 
 
 def log_path():
@@ -26,14 +27,14 @@ def main(argv=None):
     parser.add_argument("--smoke-report", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
-        open_browser = not args.no_browser and os.environ.get("FILM_RECIPE_LAB_NO_BROWSER") != "1"
+        open_browser = not args.no_browser and not browser_disabled()
         if sys.platform == "win32" and open_browser:
-            from fuji_recipe_lab.windows_app import run
+            from kora.windows_app import run
             if args.smoke_report:
                 return run(args.root, args.port, smoke_report=args.smoke_report)
             return run(args.root, args.port)
         if sys.platform == "darwin" and getattr(sys, "frozen", False) and open_browser:
-            from fuji_recipe_lab.macos_app import run
+            from kora.macos_app import run
             return run(args.root, args.port)
         serve(
             args.root,
@@ -44,7 +45,7 @@ def main(argv=None):
     except Exception as exc:
         record_crash(exc)
         if sys.platform == "win32" and not args.no_browser and not args.smoke_report:
-            from fuji_recipe_lab.windows_app import show_startup_error
+            from kora.windows_app import show_startup_error
             show_startup_error()
         return 2
 

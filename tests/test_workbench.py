@@ -8,11 +8,11 @@ import numpy as np
 import tifffile
 from pydantic import ValidationError
 
-from fuji_recipe_lab.compare import compare
-from fuji_recipe_lab.engine import ExactEngineUnavailable, render_exact
-from fuji_recipe_lab.firmware import inspect_firmware
-from fuji_recipe_lab.recipe import Recipe
-from fuji_recipe_lab.emulation import run_function, self_test
+from kora.compare import compare
+from kora.engine import ExactEngineUnavailable, render_exact
+from kora.firmware import inspect_firmware
+from kora.recipe import Recipe
+from kora.emulation import run_function, self_test
 
 
 class WorkbenchTests(unittest.TestCase):

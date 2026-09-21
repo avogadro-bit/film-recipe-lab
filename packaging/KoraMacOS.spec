@@ -2,12 +2,13 @@
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
-from fuji_recipe_lab import __version__
+from kora import __version__
+from kora.compatibility import MAC_BUNDLE_ID
 
 
 project_root = Path(SPEC).resolve().parent.parent
 datas = collect_data_files(
-    "fuji_recipe_lab",
+    "kora",
     includes=["static/*", "luts/*.json"],
 )
 datas += [
@@ -21,7 +22,7 @@ datas.append((str(notices), "Third-Party-Notices"))
 datas += collect_data_files("webview")
 
 a = Analysis(
-    [str(project_root / "fuji_recipe_lab" / "desktop.py")],
+    [str(project_root / "kora" / "desktop.py")],
     pathex=[str(project_root)],
     binaries=[],
     datas=datas,
@@ -63,7 +64,7 @@ app = BUNDLE(
     coll,
     name="KŌRA.app",
     icon=str(project_root / "build" / "AppIcon.icns"),
-    bundle_identifier="com.avogadrobit.film-recipe-lab",
+    bundle_identifier=MAC_BUNDLE_ID,
     version=__version__,
     info_plist={
         "CFBundleDisplayName": "KŌRA",

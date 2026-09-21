@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 import argparse
 import numpy as np
-from fuji_recipe_lab.studio import StudioRecipe,decode,render,resize_float,encode
+from kora.studio import StudioRecipe,decode,render,resize_float,encode
 changes={
 'exposure':{'exposure':1},'wb':{'wb':'auto'},'kelvin':{'wb':'kelvin','kelvin':3200},
 'wb_red':{'wb_red':9},'wb_blue':{'wb_blue':-9},'dynamic_range':{'dynamic_range':400},

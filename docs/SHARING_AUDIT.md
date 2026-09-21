@@ -4,7 +4,7 @@ Le dépôt Git local est initialisé. Aucun commit, dépôt distant ou envoi à 
 
 ## Problèmes corrigés
 
-- Le paquet ne se construisait pas : setuptools détectait plusieurs dossiers de premier niveau comme packages. La découverte est maintenant limitée à `fuji_recipe_lab`.
+- Le paquet ne se construisait pas : setuptools détectait plusieurs dossiers de premier niveau comme packages. La découverte est maintenant limitée à `kora`.
 - Des caches photo et téléchargements de recherche échappaient au `.gitignore`. Tout `research/`, les sorties, les photos, les LUT `.cube`, les firmwares et les clés usuelles sont exclus. Un contrôle supplémentaire inspecte aussi les fichiers déjà suivis par Git.
 - Les LUT étaient incluses dans le paquet Python. Elles sont désormais exclues du wheel et de l’archive source et installées séparément depuis l’archive originale, avec validation SHA-256 des dix tables avant écriture.
 - Les chemins personnels du lanceur, du README et de la provenance WB ont été supprimés. Trois scripts d’essai reçoivent maintenant leurs photos en arguments.

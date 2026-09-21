@@ -1,4 +1,4 @@
-# Film Recipe Lab 0.2.1
+# KŌRA 0.2.1
 
 Fixes pink highlights on Leica Q3 43 DNG files when ExifTool is unavailable,
 including applications launched from Finder. Essential DNG camera and exposure

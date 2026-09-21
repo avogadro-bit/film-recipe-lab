@@ -2,9 +2,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from fuji_recipe_lab.messaging import merge_sparse_regions, message_runtime, resume_regions
-from fuji_recipe_lab.runtime import sparse_page
-from fuji_recipe_lab.orchestration import orchestrator_probe
+from kora.messaging import merge_sparse_regions, message_runtime, resume_regions
+from kora.runtime import sparse_page
+from kora.orchestration import orchestrator_probe
 
 
 class MessageStateTests(unittest.TestCase):

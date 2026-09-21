@@ -1,4 +1,4 @@
-from fuji_recipe_lab.official_luts import missing_luts
+from kora.official_luts import missing_luts
 from io import BytesIO
 from pathlib import Path
 import unittest
@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image, ImageCms
 import tifffile
 from pydantic import ValidationError
-from fuji_recipe_lab.studio import StudioRecipe, render, encode, srgb_decode, large_radius_blur, film_grain, _coordinate_noise, _grain_deviation
+from kora.studio import StudioRecipe, render, encode, srgb_decode, large_radius_blur, film_grain, _coordinate_noise, _grain_deviation
 from scipy.ndimage import gaussian_filter
 
 @unittest.skipIf(missing_luts(), 'Official LUT integration: install Fuji assets separately')
@@ -59,9 +59,9 @@ class StudioTests(unittest.TestCase):
             color_chrome='strong',fx_blue='weak')
         def serial(length,callback,workers=None,block_rows=128,min_rows=512):
             for start in range(0,length,block_rows):callback(start,min(start+block_rows,length))
-        with patch('fuji_recipe_lab.official_luts.run_parallel_rows',side_effect=serial), \
-             patch('fuji_recipe_lab.recipe_effects.run_parallel_rows',side_effect=serial), \
-             patch('fuji_recipe_lab.studio.run_parallel_rows',side_effect=serial):
+        with patch('kora.official_luts.run_parallel_rows',side_effect=serial), \
+             patch('kora.recipe_effects.run_parallel_rows',side_effect=serial), \
+             patch('kora.studio.run_parallel_rows',side_effect=serial):
             expected=render(source,recipe)
         np.testing.assert_array_equal(render(source,recipe),expected)
 

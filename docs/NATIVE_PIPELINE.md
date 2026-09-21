@@ -86,8 +86,8 @@ Une garde déclenchée arrête l’émulation et invalide le résultat. Les trac
 ## Reproduction
 
 ```bash
-.venv/bin/python -m fuji_recipe_lab xt4-chain-probe research/extracted/xt4-2.12 --output research/reports/chain-replay.json
-.venv/bin/python -m fuji_recipe_lab xt4-threadx-probe research/extracted/xt4-2.12 --output research/reports/threadx-replay.json
+.venv/bin/python -m kora xt4-chain-probe research/extracted/xt4-2.12 --output research/reports/chain-replay.json
+.venv/bin/python -m kora xt4-threadx-probe research/extracted/xt4-2.12 --output research/reports/threadx-replay.json
 .venv/bin/python -m unittest discover -s tests -v
 ```
 

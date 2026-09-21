@@ -106,11 +106,11 @@ La suite de code observée consulte aussi un callback global à `0x017314a0` pui
 ## Reproduction et rapports
 
 ```bash
-.venv/bin/python -m fuji_recipe_lab xt4-runtime-probe research/extracted/xt4-2.12 --output research/reports/runtime-replay.json
-.venv/bin/python -m fuji_recipe_lab xt4-sync-probe research/extracted/xt4-2.12 --output research/reports/sync-replay.json
-.venv/bin/python -m fuji_recipe_lab xt4-raw-frontier-probe research/extracted/xt4-2.12 --output research/reports/raw-frontier-replay.json
-.venv/bin/python -m fuji_recipe_lab xt4-raf-metadata-probe research/extracted/xt4-2.12 "/chemin/DSCF2344.RAF" --output research/reports/raf-metadata-replay.json
-.venv/bin/python -m fuji_recipe_lab xt4-resource-probe research/extracted/xt4-2.12 "/chemin/DSCF2344.RAF" --output research/reports/resource-replay.json
+.venv/bin/python -m kora xt4-runtime-probe research/extracted/xt4-2.12 --output research/reports/runtime-replay.json
+.venv/bin/python -m kora xt4-sync-probe research/extracted/xt4-2.12 --output research/reports/sync-replay.json
+.venv/bin/python -m kora xt4-raw-frontier-probe research/extracted/xt4-2.12 --output research/reports/raw-frontier-replay.json
+.venv/bin/python -m kora xt4-raf-metadata-probe research/extracted/xt4-2.12 "/chemin/DSCF2344.RAF" --output research/reports/raf-metadata-replay.json
+.venv/bin/python -m kora xt4-resource-probe research/extracted/xt4-2.12 "/chemin/DSCF2344.RAF" --output research/reports/resource-replay.json
 .venv/bin/python -m unittest discover -s tests -v
 ```
 

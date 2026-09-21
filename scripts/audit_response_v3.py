@@ -5,7 +5,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 from scipy.optimize import least_squares
 from .fit_chrome_effects import read,align,model
-from fuji_recipe_lab.recipe_effects import chrome_effect,dynamic_range_compress
+from kora.recipe_effects import chrome_effect,dynamic_range_compress
 
 
 def bounded_chrome(a,p):
