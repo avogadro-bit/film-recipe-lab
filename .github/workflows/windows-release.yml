@@ -21,7 +21,9 @@ jobs:
         with:
           node-version: '22'
       - run: python -m pip install ".[release,optics,emulation]" rawpy==0.27.1 lensfunpy==1.18.0
-      - run: python -m unittest discover -s tests -v
+      - name: Windows regression tests
+        timeout-minutes: 4
+        run: python -c "import faulthandler, unittest; faulthandler.dump_traceback_later(120, exit=True); result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover('tests')); raise SystemExit(not result.wasSuccessful())"
       - run: node --check fuji_recipe_lab/static/app.js
       - run: node --test tests/test_film_choices_js.cjs tests/test_diagnostics_js.cjs
       - run: python scripts/prepare_release_notices.py

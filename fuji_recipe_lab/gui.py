@@ -362,7 +362,7 @@ class Library:
             # Recheck immediately before reading: iCloud residency can change
             # while the library remains open.
             if not local_file(Path(item["path"])):
-                raise ValueError("This iCloud file must be downloaded in Finder before it can be opened.")
+                raise ValueError("This cloud file must be made available offline before it can be opened.")
             path = Path(item["path"])
             info = {**item, "exif": exif(path), "preview_available": False,
                     "preview_kind": "embedded", "recipe_applied": False, "exact_fuji_render": False}
@@ -441,7 +441,7 @@ class Library:
             item = self.files[request.id]
         path = Path(item["path"])
         if not local_file(path):
-            raise ValueError("The iCloud file is not downloaded. Open Finder to download it.")
+            raise ValueError("The cloud file is not downloaded. Make it available offline first.")
 
         def finish(linear):
             stage=time.perf_counter()
@@ -487,7 +487,7 @@ class Library:
             item=self.files[identifier]
         path=Path(item['path'])
         if not local_file(path):
-            raise ValueError("The iCloud file is not downloaded. Open Finder to download it.")
+            raise ValueError("The cloud file is not downloaded. Make it available offline first.")
         # A counting decoder semaphore does not coalesce simultaneous cache
         # misses from prefetch, tiles and export. One cache fill owns this lock.
         with self.full_decode_lock, self.decoder_lock:
@@ -602,7 +602,7 @@ class Library:
         with self.lock:
             path = Path(self.files[request.id]["path"])
         if not local_file(path):
-            raise ValueError("The iCloud file is not downloaded. Open Finder to download it.")
+            raise ValueError("The cloud file is not downloaded. Make it available offline first.")
         with self.export_slot():
             with self.full_render_lock:
                 with self.lock:
